@@ -1,0 +1,269 @@
+=============================================
+  Dokumentacja Silnika 3D ebil (Format TXT)
+=============================================
+
+--------------------
+1. WPROWADZENIE
+--------------------
+
+Niniejszy dokument opisuje strukturę i działanie silnika 3D ebil
+stworzonego przy użyciu biblioteki LWJGL 3 (Lightweight Java Game Library)
+oraz JOML (Java OpenGL Math Library). Silnik ten stanowi elastyczną
+podstawę do tworzenia gier i aplikacji 3D. Kluczową cechą architektury
+jest oddzielenie rdzenia silnika od logiki konkretnej gry/aplikacji
+poprzez interfejs IEngineLogic. Pozwala to na łatwą wymianę lub
+tworzenie różnych gier wykorzystujących ten sam, reużywalny silnik.
+
+Celem silnika jest dostarczenie podstawowych mechanizmów renderowania,
+zarządzania aplikacją, obsługi audio, ładowania zasobów (tekstur, modeli)
+oraz solidnej obsługi błędów, jednocześnie umożliwiając deweloperowi gry
+skupienie się na jej specyficznej logice i zawartości.
+
+---------------------------
+2. GŁÓWNE FUNKCJE SILNIKA
+---------------------------
+
+  - Zarządzanie Oknem: Tworzenie i zarządzanie oknem aplikacji przy użyciu GLFW.
+  - Kontekst OpenGL: Inicjalizacja i zarządzanie kontekstem graficznym OpenGL (Core Profile 3.3+).
+  - Pętla Gry: Implementacja standardowej pętli gry, która deleguje obsługę wejścia,
+    aktualizację i renderowanie do zewnętrznej logiki gry (IEngineLogic).
+  - Obsługa Wejścia: Dostarczenie mechanizmów do śledzenia stanu klawiatury i myszy (Input).
+  - System Czasu: Mierzenie czasu między klatkami (deltaTime).
+  - Kamera: Dostarczenie klasy Camera z funkcjonalnością kamery 3D FPS.
+  - System Audio: Zarządzanie OpenAL, ładowanie plików WAV (parser w `util.WavLoader`),
+    zarządzanie źródłami (`SoundSource`) i słuchaczem (`Listener`).
+  - Obsługa Tekstur: Ładowanie plików graficznych (STB) jako tekstur OpenGL (`Texture`),
+    korzystając z `util.ResourceLoader`.
+  - Ładowanie Modeli: Ładowanie geometrii z plików modeli (Assimp),
+    korzystając z `util.ResourceLoader`.
+  - Obiekty Gry: Struktura `GameObject` reprezentująca obiekty (Mesh, Texture, Transformacje).
+  - Renderowanie Siatek: Klasa `Mesh` zarządzająca geometrią w OpenGL (VAO/VBO/EBO z UV).
+  - Zarządzanie Shaderami: Klasa `ShaderProgram` do obsługi GLSL (ładowanie, kompilacja, linkowanie).
+  - Oświetlenie i Cienie: Podstawowe oświetlenie kierunkowe (`DirectionalLight`) i mapowanie cieni (`ShadowMap`).
+  - Ładowanie Zasobów: Centralna klasa `util.ResourceLoader` do wczytywania plików z classpath.
+  - Obsługa Błędów: Niestandardowe wyjątki (`ResourceNotFoundException`, `ResourceLoadException`)
+    dla spójnej obsługi błędów ładowania zasobów.
+  - Narzędzia: `MeshLoader`, `ModelLoader`, `WavLoader`, `GLUtil`.
+
+-------------------------------
+3. WYMAGANIA I KONFIGURACJA
+-------------------------------
+
+  - Java Development Kit (JDK): Wersja 11 lub nowsza.
+  - Maven: System budowania projektu.
+  - System Operacyjny: Windows, Linux lub macOS (wymaga konfiguracji `lwjgl.natives` w pom.xml).
+
+Projekt używa `pom.xml` z zależnościami: LWJGL (Core, GLFW, OpenGL, OpenAL, STB, Assimp), JOML.
+
+-----------------------------
+4. STRUKTURA PROJEKTU
+-----------------------------
+
+Projekt jest zorganizowany w pakiety:
+
+  org.example
+    |-- Main.java             (Punkt wejścia)
+
+  org.example.core          (Rdzeń silnika)
+    |-- Engine.java           (Główna klasa silnika)
+    |-- Window.java           (Okno i kontekst GL)
+    |-- Input.java            (Obsługa wejścia)
+    |-- Timer.java            (Czas)
+
+  org.example.audio         (System dźwięku)
+    |-- AudioManager.java     (Zarządzanie OpenAL)
+    |-- Listener.java         (Słuchacz)
+    `-- SoundSource.java      (Źródło dźwięku)
+
+  org.example.exception     (Niestandardowe wyjątki)
+    |-- ResourceLoadException.java
+    `-- ResourceNotFoundException.java
+
+  org.example.graphics      (Renderowanie)
+    |-- Camera.java           (Kamera 3D)
+    |-- Mesh.java             (Geometria)
+    |-- Renderer.java         (Orkiestracja renderowania)
+    |-- ShaderProgram.java    (Zarządzanie shaderami)
+    |-- Texture.java          (Tekstury)
+    |-- light/
+    |   `-- DirectionalLight.java (Światło kierunkowe)
+    `-- shadow/
+        `-- ShadowMap.java      (Mapowanie cieni)
+
+  org.example.scene         (Scena)
+    |-- GameObject.java       (Obiekt gry)
+
+  org.example.util          (Narzędzia)
+    |-- GLUtil.java           (Narzędzia OpenGL)
+    |-- MeshLoader.java       (Tworzenie siatek)
+    |-- ModelLoader.java      (Ładowanie modeli)
+    |-- ResourceLoader.java   (Ładowanie zasobów z classpath)
+    `-- WavLoader.java        (Parsowanie WAV)
+
+  org.example.game          (Logika gry)
+    |-- IEngineLogic.java     (Interfejs logiki gry)
+    `-- DemoGame.java         (Implementacja dema)
+
+  src/main/resources/       (Zasoby)
+    |-- audio/
+    |-- models/
+    |-- shaders/
+    `-- textures/
+
+-----------------------
+5. OMÓWIENIE KODU
+-----------------------
+
+Szczegółowe omówienie kluczowych klas i ich odpowiedzialności:
+
+  5.1. Główny Punkt Wejścia (org.example)
+  ----------------------------------------
+    5.1.1. Main.java
+      - Tworzy `DemoGame` (logikę) i `Engine` (silnik).
+      - Uruchamia silnik (`engine.run()`).
+      - Podstawowa obsługa wyjątków inicjalizacji.
+
+  5.2. Komponenty Rdzenia Silnika (org.example.core)
+  --------------------------------------------------
+    5.2.1. Engine.java
+      - Zarządza główną pętlą, inicjalizuje i koordynuje podsystemy.
+      - Przyjmuje `IEngineLogic`, deleguje `init`, `input`, `update`, `render`, `cleanup`.
+      - Sprząta komponenty silnika w metodzie `cleanup`.
+      - Obsługuje błędy podczas inicjalizacji i w pętli.
+
+    5.2.2. Window.java
+      - Zarządza oknem GLFW, kontekstem OpenGL, zdarzeniami okna.
+      - Ustawia callbacki wejścia (deleguje do `Input`).
+      - Metoda `cleanup` zwalnia zasoby okna i terminatuje GLFW.
+
+    5.2.3. Input.java
+      - Śledzi stan klawiatury i myszy. Zarządza callbackami GLFW.
+      - Metoda `cleanup` zwalnia callbacki.
+
+    5.2.4. Timer.java
+      - Mierzy czas między klatkami (`deltaTime`).
+
+  5.3. System Audio (org.example.audio)
+  ---------------------------------------
+    5.3.1. AudioManager.java
+      - Inicjalizuje OpenAL. Ładuje pliki WAV (używając `ResourceLoader` i `WavLoader`),
+        tworzy bufory OpenAL. Zarządza źródłami (`SoundSource`) i słuchaczem (`Listener`).
+      - Metoda `loadSound` rzuca `ResourceNotFoundException` lub `ResourceLoadException`.
+      - Metoda `cleanup` sprząta zasoby OpenAL (źródła, bufory, kontekst, urządzenie).
+
+    5.3.2. Listener.java
+      - Reprezentuje słuchacza OpenAL (pozycja, orientacja).
+
+    5.3.3. SoundSource.java
+      - Reprezentuje źródło dźwięku OpenAL (stan, właściwości, bufor).
+
+  5.4. Wyjątki (org.example.exception)
+  -------------------------------------
+    5.4.1. ResourceNotFoundException.java
+      - Kontrolowany wyjątek sygnalizujący brak zasobu.
+    5.4.2. ResourceLoadException.java
+      - Kontrolowany wyjątek sygnalizujący błąd podczas ładowania/przetwarzania zasobu.
+
+  5.5. Komponenty Graficzne (org.example.graphics)
+  -------------------------------------------------
+    5.5.1. Camera.java
+      - Kamera 3D FPS, oblicza macierze Widoku/Projekcji.
+
+    5.5.2. Mesh.java
+      - Reprezentuje siatkę (VAO, VBOs dla pozycji, normalnych, UV, EBO).
+      - Metoda `cleanup` usuwa bufory i VAO.
+
+    5.5.3. Renderer.java
+      - Orkiestruje renderowanie (mapa cieni, scena). Zarządza shaderami.
+      - Metoda `init` podzielona na metody pomocnicze (`init*`), używa `ResourceLoader`.
+      - Metoda `renderScene` podzielona na metody pomocnicze (`setup*`, `render*`).
+      - Metoda `cleanup` sprząta shadery, mapę cieni, domyślną teksturę.
+
+    5.5.4. ShaderProgram.java
+      - Zarządza shaderami GLSL (ładowanie, kompilacja, linkowanie, uniformy).
+      - Metody rzucają `ResourceNotFoundException` lub `ResourceLoadException`.
+      - Metoda `cleanup` usuwa program shadera.
+
+    5.5.5. Texture.java
+      - Zarządza teksturami 2D OpenGL. Ładuje obrazy (używając `ResourceLoader` i STB).
+      - Konstruktor rzuca `ResourceNotFoundException` lub `ResourceLoadException`.
+      - Metoda `cleanup` usuwa teksturę GL.
+
+    5.5.6. light/DirectionalLight.java
+      - Reprezentuje światło kierunkowe, oblicza macierze dla cieni.
+
+    5.5.7. shadow/ShadowMap.java
+      - Zarządza zasobami mapy cieni (FBO, tekstura głębi).
+      - Metoda `cleanup` usuwa FBO i teksturę.
+
+  5.6. Komponenty Sceny (org.example.scene)
+  ------------------------------------------
+    5.6.1. GameObject.java
+      - Podstawowy obiekt sceny (Mesh, Texture, Transformacje).
+
+  5.7. Narzędzia (org.example.util)
+  ----------------------------------
+    5.7.1. GLUtil.java
+      - Metoda `checkGLError` do sprawdzania błędów OpenGL.
+
+    5.7.2. MeshLoader.java
+      - Tworzy proste siatki (sześcian, płaszczyzna) z UV.
+
+    5.7.3. ModelLoader.java
+      - Ładuje siatki z plików modeli (używając `ResourceLoader` i Assimp).
+      - Metoda `loadMesh` rzuca `ResourceNotFoundException` lub `ResourceLoadException`.
+
+    5.7.4. ResourceLoader.java
+      - Centralne wczytywanie zasobów z classpath do `ByteBuffer`. Wołający zwalnia pamięć.
+      - Metoda `ioResourceToByteBuffer` rzuca `ResourceNotFoundException`, `IOException`.
+
+    5.7.5. WavLoader.java
+      - Centralne parsowanie danych WAV z `ByteBuffer`.
+      - Metoda `load` rzuca `ResourceLoadException`.
+
+  5.8. Logika Gry (org.example.game)
+  ------------------------------------
+    5.8.1. IEngineLogic.java
+      - Interfejs kontraktu silnik-gra.
+
+    5.8.2. DemoGame.java
+      - Implementacja dema. Ładuje zasoby (z obsługą wyjątków `Resource*Exception`),
+        tworzy obiekty, obsługuje input, aktualizuje, renderuje, sprząta zasoby gry.
+
+  5.9. Shadery (src/main/resources/shaders)
+  -------------------------------------------
+    5.9.1. depth_vertex.glsl & depth_fragment.glsl
+      - Generowanie mapy cieni.
+    5.9.2. scene_vertex.glsl & scene_fragment.glsl
+      - Renderowanie sceny z teksturami, oświetleniem i cieniami.
+
+-----------------------------
+6. POTENCJALNE ULEPSZENIA
+-----------------------------
+
+  - System Materiałów
+  - Więcej typów świateł / Wiele świateł
+  - System Sceny (Drzewo/Komponenty)
+  - Fizyka (JBullet)
+  - GUI (ImGui)
+  - Optymalizacje (Culling, Instancing, LOD)
+  - Zaawansowane Cienie / Oświetlenie
+  - Obsługa innych formatów audio/modeli
+  - Lepsza diagnostyka błędów GL
+  - Cutscenki
+  - Efekty graficzne/Filtry
+  - Efekty pogodowe
+
+-------------------
+7. PODSUMOWANIE
+-------------------
+
+Silnik 3D ebil v1.2.1 stanowi solidną, modularną bazę do tworzenia aplikacji 3D
+w Javie z LWJGL 3. Dzięki oddzieleniu rdzenia od logiki gry, refaktoryzacji
+ładowania zasobów i ulepszonej obsłudze błędów, oferuje elastyczność
+i stabilność dla dalszego rozwoju. Implementuje podstawowe funkcje
+renderowania (tekstury, oświetlenie, cienie), obsługę modeli 3D oraz dźwięku WAV.
+
+=============================================
+  Koniec Dokumentacji
+=============================================

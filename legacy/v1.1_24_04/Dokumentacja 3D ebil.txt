@@ -1,0 +1,261 @@
+=============================================
+  Dokumentacja Silnika 3D ebil (Format TXT)
+=============================================
+
+--------------------
+1. WPROWADZENIE
+--------------------
+
+Niniejszy dokument opisuje strukturę i działanie silnika 3D ebil
+stworzonego przy użyciu biblioteki LWJGL 3 (Lightweight Java Game Library)
+oraz JOML (Java OpenGL Math Library). Silnik ten stanowi elastyczną
+podstawę do tworzenia gier i aplikacji 3D. Kluczową cechą architektury
+jest oddzielenie rdzenia silnika od logiki konkretnej gry/aplikacji
+poprzez interfejs IEngineLogic. Pozwala to na łatwą wymianę lub
+tworzenie różnych gier wykorzystujących ten sam, reużywalny silnik.
+
+Celem silnika jest dostarczenie podstawowych mechanizmów renderowania
+i zarządzania aplikacją, jednocześnie umożliwiając deweloperowi gry
+skupienie się na jej specyficznej logice i zawartości.
+
+---------------------------
+2. GŁÓWNE FUNKCJE SILNIKA
+---------------------------
+
+  - Zarządzanie Oknem: Tworzenie i zarządzanie oknem aplikacji przy użyciu GLFW.
+  - Kontekst OpenGL: Inicjalizacja i zarządzanie kontekstem graficznym OpenGL (Core Profile 3.3+).
+  - Pętla Gry: Implementacja standardowej pętli gry, która deleguje obsługę wejścia,
+    aktualizację i renderowanie do zewnętrznej logiki gry (IEngineLogic).
+  - Obsługa Wejścia: Dostarczenie mechanizmów do śledzenia stanu klawiatury i myszy (Input),
+    które mogą być wykorzystane przez logikę gry.
+  - System Czasu: Mierzenie czasu między klatkami (deltaTime) dla płynnej animacji i fizyki.
+  - Kamera: Dostarczenie klasy Camera z funkcjonalnością kamery 3D FPS, która może być
+    kontrolowana przez logikę gry.
+  - Obiekty Gry: Dostarczenie podstawowej struktury GameObject do reprezentacji obiektów na scenie.
+  - Renderowanie Siatek: Klasa Mesh do zarządzania geometrią w OpenGL (VAO, VBO, EBO).
+  - Zarządzanie Shaderami: Klasa ShaderProgram do obsługi shaderów GLSL.
+  - Oświetlenie i Cienie: Dostarczenie podstawowych klas (DirectionalLight, ShadowMap) i shaderów
+    do implementacji oświetlenia kierunkowego i mapowania cieni.
+  - Narzędzia: Podstawowe narzędzia, np. MeshLoader do tworzenia prostych siatek.
+
+-------------------------------
+3. WYMAGANIA I KONFIGURACJA
+-------------------------------
+
+  - Java Development Kit (JDK): Wersja 11 lub nowsza.
+  - Maven: System budowania projektu używany do zarządzania zależnościami.
+  - System Operacyjny: Windows, Linux lub macOS (wymaga odpowiedniej konfiguracji
+    natywnych bibliotek LWJGL w pom.xml).
+
+Projekt jest skonfigurowany przy użyciu pliku pom.xml, który zawiera zależności do:
+  - LWJGL (Core, GLFW, OpenGL)
+  - JOML (Java OpenGL Math Library)
+  - Natywne biblioteki LWJGL dla docelowej platformy (natives-windows, natives-linux, natives-macos).
+
+-----------------------------
+4. STRUKTURA PROJEKTU
+-----------------------------
+
+Projekt jest zorganizowany w pakiety odzwierciedlające funkcjonalność komponentów:
+
+  org.example
+    |-- Main.java             (Minimalistyczny punkt wejścia)
+
+  org.example.core          (Rdzeń silnika)
+    |-- Engine.java           (Główna klasa silnika)
+    |-- Window.java           (Zarządzanie oknem i kontekstem GL)
+    |-- Input.java            (Niskopoziomowa obsługa wejścia)
+    |-- Timer.java            (Obliczanie deltaTime)
+
+  org.example.graphics      (Komponenty renderowania silnika)
+    |-- Camera.java           (Kamera 3D)
+    |-- Mesh.java             (Geometria 3D w OpenGL)
+    |-- Renderer.java         (Orkiestracja renderowania)
+    |-- ShaderProgram.java    (Zarządzanie shaderami GLSL)
+    |-- light/
+    |   `-- DirectionalLight.java (Światło kierunkowe)
+    `-- shadow/
+        `-- ShadowMap.java      (Zarządzanie FBO i teksturą cieni)
+
+  org.example.scene         (Komponenty sceny silnika)
+    |-- GameObject.java       (Podstawowy obiekt w scenie)
+
+  org.example.util          (Klasy pomocnicze silnika)
+    |-- MeshLoader.java       (Tworzenie prostych siatek)
+
+  org.example.game          (Logika specyficzna dla gry/dema)
+    |-- IEngineLogic.java     (Interfejs kontraktu silnik-gra)
+    `-- DemoGame.java         (Implementacja dema)
+
+  src/main/resources/shaders (Pliki shaderów GLSL)
+    |-- scene_vertex.glsl
+    |-- scene_fragment.glsl
+    |-- depth_vertex.glsl
+    `-- depth_fragment.glsl
+
+-----------------------
+5. OMÓWIENIE KODU
+-----------------------
+
+Ta sekcja zawiera szczegółowe omówienie poszczególnych plików źródłowych (Java)
+oraz shaderów (GLSL) składających się na silnik 3D ebil oraz przykładową logikę gry.
+
+  5.1. Główny Punkt Wejścia (org.example)
+  ----------------------------------------
+    5.1.1. Main.java
+      - Przeznaczenie: Jedyny punkt wejścia aplikacji. Ogranicza się do
+        stworzenia instancji logiki gry (np. DemoGame) i silnika (Engine),
+        a następnie uruchomienia silnika (engine.run()).
+      - Logika: Tworzy DemoGame, tworzy Engine (przekazując DemoGame),
+        wywołuje engine.run(). Obsługuje podstawowe wyjątki inicjalizacji.
+
+  5.2. Komponenty Rdzenia Silnika (org.example.core)
+  --------------------------------------------------
+    5.2.1. Engine.java
+      - Przeznaczenie: Serce silnika. Zarządza pętlą gry, inicjalizuje
+        i koordynuje podsystemy (Window, Input, Timer, Renderer, Camera).
+        Przyjmuje IEngineLogic i deleguje zadania specyficzne dla gry.
+      - Kluczowe Pola: window, input, timer, renderer, camera, gameLogic.
+      - Kluczowe Metody: Konstruktor (inicjalizacja), run (opakowanie cyklu),
+        loop (główna pętla delegująca do gameLogic), cleanup (sprzątanie).
+
+    5.2.2. Window.java
+      - Przeznaczenie: Zarządzanie oknem GLFW, kontekstem OpenGL, zdarzeniami
+        okna (rozmiar, zamknięcie), ustawianie callbacków wejścia (deleguje do Input).
+      - Kluczowe Pola: windowHandle, width, height, title, input.
+      - Kluczowe Metody: init (tworzenie okna, kontekstu, callbacków),
+        isKeyPressed, windowShouldClose, update (swapBuffers, pollEvents), cleanup.
+
+    5.2.3. Input.java
+      - Przeznaczenie: Abstrakcja nad wejściem GLFW. Śledzi stan klawiatury,
+        myszy (pozycja, przyciski, delta). Zarządza callbackami.
+      - Kluczowe Pola: keys[], buttons[], mouseX/Y, prevMouseX/Y, mouseDelta,
+        instancje callbacków.
+      - Kluczowe Metody: Konstruktor (tworzy callbacki), isKeyDown/MouseButtonDown,
+        getMouseX/Y/Delta, init (ustawia tryb kursora), update (oblicza deltę),
+        cleanup (zwalnia callbacki), gettery dla callbacków.
+
+    5.2.4. Timer.java
+      - Przeznaczenie: Mierzenie czasu między klatkami (deltaTime).
+      - Kluczowe Pola: lastLoopTime, deltaTime.
+      - Kluczowe Metody: init, getTime, getDeltaTime, update (oblicza deltaTime).
+
+  5.3. Komponenty Graficzne (org.example.graphics)
+  -------------------------------------------------
+    5.3.1. Camera.java
+      - Przeznaczenie: Wirtualna kamera 3D (pozycja, orientacja, parametry).
+        Oblicza macierze Widoku i Projekcji.
+      - Kluczowe Pola: position, front, up, right, worldUp, yaw, pitch,
+        movementSpeed, mouseSensitivity, fov.
+      - Kluczowe Metody: getViewMatrix, getProjectionMatrix, processKeyboard,
+        processMouseMovement, updateCameraVectors (przelicza kierunki).
+
+    5.3.2. Mesh.java
+      - Przeznaczenie: Reprezentacja renderowalnej siatki geometrycznej.
+        Zarządza obiektami VAO, VBO(s), EBO.
+      - Kluczowe Pola: vaoId, posVboId, normalVboId, idxVboId, vertexCount.
+      - Kluczowe Metody: Konstruktor (tworzy i wypełnia bufory GL), render
+        (wiąże VAO, wywołuje glDrawElements), cleanup (usuwa obiekty GL).
+
+    5.3.3. Renderer.java
+      - Przeznaczenie: Orkiestracja procesu renderowania. Zarządza shaderami,
+        uniformami, wywołuje rysowanie. Implementuje mapowanie cieni.
+      - Kluczowe Pola: sceneShaderProgram, depthShaderProgram, shadowMap, window.
+      - Kluczowe Metody: init (tworzy shadow map, ładuje shadery), render
+        (wywołuje renderDepthMap i renderScene), renderDepthMap (przejście cieni),
+        renderScene (główne przejście), cleanup (sprząta shadery, shadow map).
+
+    5.3.4. ShaderProgram.java
+      - Przeznaczenie: Hermetyzacja logiki shaderów GLSL (ładowanie, kompilacja,
+        linkowanie, zarządzanie uniformami).
+      - Kluczowe Pola: programId, vertexShaderId, fragmentShaderId, uniforms (cache).
+      - Kluczowe Metody: Konstruktor, createVertex/FragmentShader, createShader, link,
+        createUniform, setUniform (przeciążone), bind, unbind, cleanup,
+        loadShaderSource (pomocnicza).
+
+    5.3.5. light/DirectionalLight.java
+      - Przeznaczenie: Reprezentacja światła kierunkowego (kolor, kierunek,
+        intensywność). Oblicza macierze dla mapowania cieni.
+      - Kluczowe Pola: color, direction, intensity, shadowPosMult, orthoSize.
+      - Kluczowe Metody: Konstruktor, Gettery/Settery, getLightProjectionMatrix (ortho),
+        getLightViewMatrix (lookAt z perspektywy światła), getLightSpaceMatrix (P * V światła).
+
+    5.3.6. shadow/ShadowMap.java
+      - Przeznaczenie: Zarządzanie zasobami dla mapowania cieni (FBO, tekstura głębi).
+      - Kluczowe Pola: SHADOW_MAP_WIDTH/HEIGHT, depthMapFBO, depthMapTexture.
+      - Kluczowe Metody: Konstruktor (tworzy FBO i teksturę głębi), bindForWriting
+        (aktywuje FBO do zapisu), unbindAfterWriting (wraca do domyślnego FBO),
+        getDepthMapTexture, cleanup (usuwa FBO i teksturę).
+
+  5.4. Komponenty Sceny (org.example.scene)
+  ------------------------------------------
+    5.4.1. GameObject.java
+      - Przeznaczenie: Podstawowy obiekt w scenie 3D (transformacje, siatka, kolor).
+      - Kluczowe Pola: mesh, position, rotation (Quaternionf), scale, color.
+      - Kluczowe Metody: Konstruktor, getModelMatrix (oblicza macierz modelu),
+        Gettery/Settery dla transformacji i koloru.
+
+  5.5. Narzędzia (org.example.util)
+  ----------------------------------
+    5.5.1. MeshLoader.java
+      - Przeznaczenie: Klasa narzędziowa do tworzenia prostych siatek (sześcian, płaszczyzna).
+      - Kluczowe Metody: createCube, createPlane (definiują dane wierzchołków i tworzą Mesh).
+
+  5.6. Logika Gry (org.example.game)
+  ------------------------------------
+    5.6.1. IEngineLogic.java
+      - Przeznaczenie: Interfejs definiujący metody, które musi zaimplementować
+        konkretna gra/demo. Stanowi kontrakt komunikacyjny z silnikiem.
+      - Kluczowe Metody (abstrakcyjne): init (ładowanie zasobów gry), input
+        (obsługa wejścia gry), update (aktualizacja logiki gry), render
+        (zlecenie renderowania sceny), cleanup (sprzątanie zasobów gry).
+
+    5.6.2. DemoGame.java
+      - Przeznaczenie: Implementacja IEngineLogic dla prostego dema.
+      - Logika: W metodzie `init` tworzy obiekty `Mesh` (korzystając z `MeshLoader`),
+        tworzy `GameObject` (sześciany, podłoga), ustawia ich właściwości i tworzy
+        `DirectionalLight`. W `input` obsługuje sterowanie kamerą. W `update`
+        realizuje logikę obracania sześcianów. W `render` wywołuje
+        `renderer.render` przekazując swoje obiekty i światło. W `cleanup`
+        sprząta stworzone obiekty `Mesh`.
+
+  5.7. Shadery (src/main/resources/shaders)
+  -------------------------------------------
+    5.7.1. depth_vertex.glsl & depth_fragment.glsl
+      - Przeznaczenie: Generowanie mapy cieni. Vertex shader transformuje
+        wierzchołki do przestrzeni światła. Fragment shader jest pusty
+        (interesuje nas tylko automatyczny zapis głębi).
+
+    5.7.2. scene_vertex.glsl & scene_fragment.glsl
+      - Przeznaczenie: Renderowanie głównej sceny. Vertex shader transformuje
+        wierzchołki i przekazuje dane (pozycja, normalna, pozycja w przestrzeni
+        światła) do fragment shadera. Fragment shader oblicza ostateczny kolor
+        na podstawie koloru obiektu, oświetlenia (Ambient, Diffuse, Specular)
+        oraz cienia (porównując głębię z mapą cieni).
+
+-----------------------------
+6. POTENCJALNE ULEPSZENIA
+-----------------------------
+
+  - Tekstury i Materiały
+  - Więcej typów świateł i obsługa wielu świateł
+  - Zaawansowany System Sceny (np. drzewo sceny)
+  - Ładowanie Modeli 3D (np. Assimp)
+  - Integracja Fizyki (np. JBullet)
+  - Dźwięk (np. OpenAL)
+  - Interfejs Użytkownika (GUI)
+  - Optymalizacje (Frustum/Occlusion Culling, Instancing, LOD)
+  - Lepsza jakość cieni (PCF, VSM, ESM)
+
+-------------------
+7. PODSUMOWANIE
+-------------------
+
+Silnik 3D ebil, dzięki oddzieleniu rdzenia od logiki gry, stanowi elastyczną
+bazę do tworzenia aplikacji 3D w Javie z użyciem LWJGL 3. Implementuje
+podstawowe mechanizmy renderowania, w tym oświetlenie i cienie, umożliwiając
+dalszą rozbudowę i eksperymentowanie.
+
+=============================================
+  Koniec Dokumentacji
+=============================================

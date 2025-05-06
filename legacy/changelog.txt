@@ -1,0 +1,167 @@
+============================
+  CHANGELOG - Silnik 3D ebil
+============================
+
+Wszystkie znaczące zmiany w projekcie będą dokumentowane w tym pliku.
+Format bazuje na Keep a Changelog (https://keepachangelog.com/en/1.0.0/).
+
+--------------------
+[1.2.5] - 2025-05-05
+--------------------
+
+### Zmieniono (Changed)
+
+- **Refaktoryzacja Renderera (Podział na Komponenty):**
+    - Główna klasa `Renderer` została zrefaktoryzowana i przeniesiona do pakietu `org.example.graphics.render`.
+    - Logika renderowania została podzielona na bardziej wyspecjalizowane komponenty w nowym pakiecie `org.example.graphics.render`:
+        - `ShaderManager`: Zarządza tworzeniem, kompilacją, linkowaniem i udostępnianiem shaderów (sceny i głębi).
+        - `ShadowRenderer`: Odpowiada za inicjalizację `ShadowMap` (FBO) i wykonanie przebiegu generowania mapy cieni (depth pass).
+        - `SceneRenderer`: Odpowiada za główny przebieg renderowania sceny (forward pass), w tym ustawianie globalnych uniformów (kamera, światła, samplery) i renderowanie obiektów z materiałami.
+        - `DefaultResourceManager`: Zarządza tworzeniem i udostępnianiem domyślnej tekstury i materiału.
+    - Główna klasa `Renderer` pełni teraz rolę orkiestratora, inicjalizując i koordynując te komponenty oraz zarządzając podstawowym stanem OpenGL.
+    - Zależności między komponentami (np. przekazanie shaderów, domyślnych zasobów, ID mapy cieni) są jawnie zarządzane podczas inicjalizacji.
+- **Interfejs `IEngineLogic`:** Zaktualizowano sygnatury metod `init` i `render`, aby używały typu `Renderer` z nowego pakietu `org.example.graphics.render`.
+- **Klasy `Engine` i `DemoGame`:** Zaktualizowano importy i wywołania metod, aby były zgodne z nową lokalizacją i strukturą klasy `Renderer`.
+
+### Naprawiono (Fixed)
+
+- **Błędy Kompilacji po Refaktoryzacji:** Rozwiązano problemy wynikające z przeniesienia klasy `Renderer` poprzez aktualizację interfejsu `IEngineLogic` oraz importów w klasach `Engine` i `DemoGame`.
+
+### Uwagi (Notes)
+
+- Ta refaktoryzacja ma na celu poprawę struktury, czytelności i zarządzalności kodu renderującego, nie wprowadza nowych funkcjonalności wizualnych.
+
+--------------------
+[1.2.4] - 2025-05-04  
+--------------------
+
+### Dodano (Added)
+
+- **Obsługa Wielu Świateł:**
+    - Wprowadzono nowe klasy świateł: `graphics.light.PointLight` i `graphics.light.SpotLight`.
+    - Dodano klasę pomocniczą `graphics.light.Attenuation` do zarządzania tłumieniem światła punktowego/reflektorowego.
+    - `Renderer` może teraz przyjmować i przetwarzać listy świateł punktowych i reflektorowych (do zdefiniowanych limitów `MAX_POINT_LIGHTS`, `MAX_SPOT_LIGHTS`).
+- **Aktualizacja Shadera Sceny:**
+    - `scene_fragment.glsl` został znacząco rozbudowany, aby obliczać wkład wielu świateł kierunkowych (jedno), punktowych (tablica) i reflektorowych (tablica).
+    - Shader obsługuje teraz tłumienie (attenuation) dla świateł punktowych/reflektorowych oraz efekt stożka dla świateł reflektorowych.
+- **Interaktywna Latarka (`DemoGame`):**
+    - Dodano światło typu `SpotLight` symulujące latarkę gracza.
+    - Pozycja i kierunek latarki są aktualizowane w każdej klatce na podstawie pozycji i kierunku kamery.
+    - Dodano możliwość włączania/wyłączania latarki klawiszem 'T' poprzez zmianę jej intensywności.
+
+### Zmieniono (Changed)
+
+- **`Renderer.render`:** Sygnatura metody została zmieniona, aby przyjmować listy `PointLight` i `SpotLight` oprócz `DirectionalLight`.
+- **`Renderer.initSceneShaderProgram`:** Dodano tworzenie uniformów tablicowych dla `pointLights` i `spotLights` oraz ich właściwości (w tym zagnieżdżonych `Attenuation` i `PointLight` w `SpotLight`).
+- **`Renderer.setupScenePerFrameUniforms`:** Metoda ustawia teraz uniformy dla wszystkich przekazanych świateł (do zdefiniowanych limitów).
+- **`DemoGame`:**
+    - Inicjalizuje i przechowuje listy `pointLights` i `spotLights`.
+    - Metoda `createLights` tworzy teraz przykładowe światła punktowe i reflektorowe o różnych kolorach i właściwościach.
+    - Metoda `input` aktualizuje pozycję/kierunek latarki i obsługuje jej włączanie/wyłączanie.
+    - Wywołanie `renderer.render` przekazuje teraz listy wszystkich typów świateł.
+
+### Uwagi (Notes)
+
+- **Cienie:** Obecna implementacja mapowania cieni nadal działa **tylko** dla jednego światła kierunkowego (`DirectionalLight`). Dodanie cieni dla świateł punktowych/reflektorowych wymagałoby znacznie bardziej złożonych technik (np. omnidirectional shadow mapping / cube maps).
+
+--------------------
+[1.2.3] - 2025-05-04
+--------------------
+
+### Dodano (Added)
+
+- **System Materiałów:**
+    - Wprowadzono nową klasę `graphics.Material` przechowującą właściwości oddziaływania powierzchni ze światłem (kolory ambient, diffuse, specular, reflectance) oraz opcjonalne tekstury (diffuse map, specular map).
+    - `Material` zawiera logikę wiązania swoich właściwości i tekstur do uniformów shadera (`bind` metoda).
+- **Domyślny Materiał:** `Renderer` tworzy teraz domyślny, szary materiał używany dla obiektów, które nie mają przypisanego własnego materiału.
+
+### Zmieniono (Changed)
+
+- **`GameObject`:** Zamiast bezpośrednio przechowywać `Texture`, `GameObject` przechowuje teraz obiekt `Material` (może być `null`). Konstruktor został zaktualizowany.
+- **`Renderer`:**
+    - Zaktualizowano inicjalizację i zarządzanie uniformami, aby obsługiwać właściwości materiału i samplery tekstur (diffuse, specular, shadow).
+    - Metoda `renderSceneObjects` pobiera teraz `Material` z `GameObject` (lub używa domyślnego) i wywołuje jego metodę `bind` przed renderowaniem siatki.
+- **`DemoGame`:**
+    - Logika inicjalizacji tworzy teraz instancje `Material` (używając załadowanych tekstur) i przypisuje je do tworzonych `GameObject`.
+    - `cleanup` został dostosowany (mapa materiałów jest czyszczona, same materiały nie wymagają cleanupu).
+- **Shadery (`scene_vertex.glsl`, `scene_fragment.glsl`):**
+    - Zaktualizowano, aby przyjmowały i wykorzystywały uniformy materiału (struktura `MaterialInfo`, samplery `diffuseSampler`, `specularSampler`, flagi `has...Map`).
+    - Logika oświetlenia w `scene_fragment.glsl` używa teraz właściwości materiału i tekstur do obliczenia końcowego koloru.
+
+### Naprawiono (Fixed)
+
+- **Tworzenie Materiału (`DemoGame`):** Poprawiono wywołanie konstruktora `Material` dla obiektu królika, aby używało poprawnego konstruktora z jawnym `null` dla brakującej mapy specular.
+- **Ustawianie Uniformów Boolean (`Material`):** Poprawiono metodę `Material.bind`, aby przekazywała flagi `hasDiffuseMap` i `hasSpecularMap` do shadera jako `int` (0 lub 1) zamiast `boolean`, zgodnie z wymaganiami `ShaderProgram.setUniform`.
+
+
+--------------------
+[1.2.2] - 2025-05-04
+--------------------
+
+### Dodano (Added)
+- **Właściwości Obiektów Gry (`GameObjectProperties`):** Nowa klasa z Builderem.
+- **Interakcja w Demo (`DemoGame`):** Atak (F), toggle widoczności (B).
+
+### Zmieniono (Changed)
+- **`GameObject`:** Przechowuje `GameObjectProperties`.
+- **Tworzenie Obiektów (`DemoGame`):** Używa Buildera `GameObjectProperties`.
+- **Renderowanie (`DemoGame`):** Filtruje niewidoczne obiekty.
+- **Ładowanie Zasobów (`ResourceLoader`):** Tylko ClassLoader.
+
+### Naprawiono (Fixed)
+- **Błędy Ładowania Zasobów:** Poprawiono ścieżki, użycie ClassLoadera.
+- **Błędy Kompilacji:** Poprawki w `MeshLoader.createPlane` i `Texture` (konstruktory).
+
+
+--------------------
+[1.2.1] - 2025-04-24
+--------------------
+### Naprawiono (Fixed)
+- **Fatal Error JVM (EXCEPTION_ACCESS_VIOLATION):** Poprawiono `cleanup`.
+- **Refaktoryzacja `Engine` (Konstruktor):** Inicjalizacja `null`.
+
+### Zmieniono (Changed)
+- **Refaktoryzacja Ładowania Zasobów:** `ResourceLoader`, `WavLoader`.
+- **Standaryzacja Obsługi Błędów:** `ResourceNotFoundException`, `ResourceLoadException`.
+- **Refaktoryzacja `Renderer`:** Podział metod `init` i `renderScene`.
+
+
+--------------------
+[1.2.0] - 2025-04-24
+--------------------
+### Dodano (Added)
+- **System Audio (OpenAL):** `AudioManager`, `SoundSource`, `Listener`, ładowanie WAV.
+- **Tekstury:** Ładowanie (STB), UV w `Mesh`, `GameObject` używa `Texture`, shadery z UV, `Renderer` z teksturami, przykładowe pliki.
+- **Ładowanie Modeli:** Ładowanie (Assimp), obsługa UV, przykładowy model.
+- **Ulepszenia `DemoGame`:** Użycie tekstur i modeli.
+
+### Naprawiono (Fixed)
+- **Ładowanie Audio WAV:** Poprawki parsera.
+- **Inicjalizacja Shadera Głębi:** Poprawka `NullPointerException`.
+- **Obsługa Tekstur w Shaderach:** Poprawki deklaracji i użycia.
+- **Fatal Error JVM:** Rozwiązano (skutek uboczny).
+
+
+--------------------
+[1.1.0] - 2025-04-24
+--------------------
+### Zmieniono (Changed)
+- **Architektura:** Oddzielenie `core` od `game` (`IEngineLogic`, `DemoGame`).
+- **Zarządzanie zasobami:** `IEngineLogic.cleanup()`.
+- **Nazewnictwo:** `Main` -> `Engine`.
+- **Mapowanie Cieni/Oświetlenie:** Poprawki/Ulepszenia.
+
+### Dodano (Added)
+- Pakiet `org.example.game`.
+
+### Usunięto (Removed)
+- Zależność `Engine` od demo.
+- Logika sceny demo z `Engine`.
+
+
+--------------------
+[1.0.0] - 2025-04-23
+--------------------
+### Dodano (Added)
+- **Podstawowa Struktura Silnika:** Okno, pętla, input, czas, kamera, `GameObject`, `Mesh`, `ShaderProgram`, `MeshLoader`, demo.
+- Konfiguracja Maven.

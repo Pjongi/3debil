@@ -1,0 +1,241 @@
+=============================================
+  Dokumentacja Silnika 3D ebil (Format TXT)
+=============================================
+
+--------------------
+1. WPROWADZENIE
+--------------------
+
+Niniejszy dokument opisuje strukturę i działanie silnika 3D ebil
+stworzonego przy użyciu biblioteki LWJGL 3 (Lightweight Java Game Library)
+oraz JOML (Java OpenGL Math Library). Silnik ten stanowi elastyczną
+podstawę do tworzenia gier i aplikacji 3D. Kluczową cechą architektury
+jest oddzielenie rdzenia silnika od logiki konkretnej gry/aplikacji
+poprzez interfejs IEngineLogic. Pozwala to na łatwą wymianę lub
+tworzenie różnych gier wykorzystujących ten sam, reużywalny silnik.
+
+Celem silnika jest dostarczenie podstawowych mechanizmów renderowania,
+zarządzania aplikacją, obsługi audio, ładowania zasobów (tekstur, modeli),
+zarządzania materiałami, **obsługi wielu źródeł światła** oraz solidnej
+obsługi błędów, jednocześnie umożliwiając deweloperowi gry skupienie się
+na jej specyficznej logice i zawartości.
+
+---------------------------
+2. GŁÓWNE FUNKCJE SILNIKA
+---------------------------
+
+  - Zarządzanie Oknem: Tworzenie i zarządzanie oknem aplikacji przy użyciu GLFW.
+  - Kontekst OpenGL: Inicjalizacja i zarządzanie kontekstem graficznym OpenGL (Core Profile 3.3+).
+  - Pętla Gry: Implementacja standardowej pętli gry (input, update, render) delegująca do `IEngineLogic`.
+  - Obsługa Wejścia: Śledzenie stanu klawiatury i myszy (`Input`).
+  - System Czasu: Mierzenie czasu między klatkami (`deltaTime`).
+  - Kamera: Kamera 3D FPS (`Camera`).
+  - System Audio: Zarządzanie OpenAL (`AudioManager`), ładowanie WAV (`WavLoader`), źródła (`SoundSource`), słuchacz (`Listener`).
+  - Obsługa Tekstur: Ładowanie obrazów (STB) jako tekstur OpenGL (`Texture`).
+  - System Materiałów: Definiowanie właściwości powierzchni (`Material`) z kolorami i mapami tekstur.
+  - Ładowanie Modeli: Ładowanie geometrii z plików (Assimp) (`ModelLoader`).
+  - Obiekty Gry: `GameObject` (Mesh, Material, Transform, Properties), `GameObjectProperties` (Builder).
+  - Renderowanie Siatek: `Mesh` (VAO/VBO/EBO z UV).
+  - Zarządzanie Shaderami: `ShaderProgram` (GLSL).
+  - **Obsługa Wielu Świateł:**
+      - Światło kierunkowe (`DirectionalLight`) z mapowaniem cieni (`ShadowMap`).
+      - Światła punktowe (`PointLight`) z tłumieniem (`Attenuation`).
+      - Światła reflektorowe (`SpotLight`) z tłumieniem i stożkiem.
+      - `Renderer` przekazuje dane wielu świateł do shadera (do ustalonego limitu).
+      - Shader sceny oblicza wpływ wielu źródeł światła.
+  - Ładowanie Zasobów: `ResourceLoader` (z classpath).
+  - Obsługa Błędów: Wyjątki `ResourceNotFoundException`, `ResourceLoadException`.
+  - Narzędzia: `MeshLoader`, `WavLoader`.
+
+-------------------------------
+3. WYMAGANIA I KONFIGURACJA
+-------------------------------
+
+  - Java Development Kit (JDK): Wersja 11 lub nowsza (zalecana 17+).
+  - Maven: System budowania projektu (lub Gradle).
+  - System Operacyjny: Windows, Linux lub macOS (wymaga poprawnej konfiguracji `lwjgl.natives` w pom.xml).
+
+Projekt używa `pom.xml` z zależnościami: LWJGL (Core, GLFW, OpenGL, OpenAL, STB, Assimp), JOML.
+
+-----------------------------
+4. STRUKTURA PROJEKTU
+-----------------------------
+
+Projekt jest zorganizowany w pakiety:
+
+  org.example
+    |-- Main.java             (Punkt wejścia)
+
+  org.example.core          (Rdzeń silnika)
+    |-- Engine.java           (Główna klasa silnika)
+    |-- Window.java           (Okno i kontekst GL)
+    |-- Input.java            (Obsługa wejścia)
+    |-- Timer.java            (Czas)
+
+  org.example.audio         (System dźwięku)
+    |-- AudioManager.java     (Zarządzanie OpenAL)
+    |-- Listener.java         (Słuchacz)
+    `-- SoundSource.java      (Źródło dźwięku)
+
+  org.example.exception     (Niestandardowe wyjątki)
+    |-- ResourceLoadException.java
+    `-- ResourceNotFoundException.java
+
+  org.example.graphics      (Renderowanie)
+    |-- Camera.java           (Kamera 3D)
+    |-- Material.java         (Właściwości materiału)
+    |-- Mesh.java             (Geometria)
+    |-- Renderer.java         (Orkiestracja renderowania)
+    |-- ShaderProgram.java    (Zarządzanie shaderami)
+    |-- Texture.java          (Tekstury)
+    |-- light/                (System oświetlenia) <-- Zaktualizowano
+    |   |-- Attenuation.java      (Tłumienie światła) <-- Dodano
+    |   |-- DirectionalLight.java (Światło kierunkowe)
+    |   |-- PointLight.java       (Światło punktowe) <-- Dodano
+    |   `-- SpotLight.java        (Światło reflektorowe) <-- Dodano
+    `-- shadow/
+        `-- ShadowMap.java      (Mapowanie cieni dla DirLight)
+
+  org.example.scene         (Scena)
+    |-- GameObject.java       (Obiekt gry)
+    `-- GameObjectProperties.java (Właściwości obiektu z Builderem)
+
+  org.example.util          (Narzędzia)
+    |-- MeshLoader.java       (Tworzenie siatek)
+    |-- ModelLoader.java      (Ładowanie modeli)
+    |-- ResourceLoader.java   (Ładowanie zasobów z classpath)
+    `-- WavLoader.java        (Parsowanie WAV)
+
+  org.example.game          (Logika gry)
+    |-- IEngineLogic.java     (Interfejs logiki gry)
+    `-- DemoGame.java         (Implementacja dema)
+
+  src/main/resources/       (Zasoby)
+    |-- audio/
+    |-- models/
+    |-- shaders/
+    `-- textures/
+
+-----------------------
+5. OMÓWIENIE KODU
+-----------------------
+
+Szczegółowe omówienie kluczowych klas i ich odpowiedzialności:
+
+  5.1. Główny Punkt Wejścia (org.example)
+  ----------------------------------------
+    5.1.1. Main.java (bez zmian)
+
+  5.2. Komponenty Rdzenia Silnika (org.example.core) (bez zmian)
+  --------------------------------------------------
+    5.2.1. Engine.java
+    5.2.2. Window.java
+    5.2.3. Input.java
+    5.2.4. Timer.java
+
+  5.3. System Audio (org.example.audio) (bez zmian)
+  ---------------------------------------
+    5.3.1. AudioManager.java
+    5.3.2. Listener.java
+    5.3.3. SoundSource.java
+
+  5.4. Wyjątki (org.example.exception) (bez zmian)
+  -------------------------------------
+    5.4.1. ResourceNotFoundException.java
+    5.4.2. ResourceLoadException.java
+
+  5.5. Komponenty Graficzne (org.example.graphics)
+  -------------------------------------------------
+    5.5.1. Camera.java (bez zmian)
+    5.5.2. Mesh.java (bez zmian)
+
+    5.5.3. Renderer.java
+      - Orkiestruje renderowanie (mapa cieni dla dirLight, scena ze wszystkimi światłami).
+      - Inicjalizuje i zarządza shaderami, mapą cieni, domyślnymi zasobami.
+      - **Metoda `render` przyjmuje teraz listy różnych typów świateł.**
+      - **Metoda `initSceneShaderProgram` tworzy uniformy tablicowe dla świateł punktowych i reflektorowych.**
+      - **Metoda `setupScenePerFrameUniforms` ustawia uniformy dla wszystkich przekazanych świateł (do limitu).**
+      - Metoda `renderSceneObjects` wiąże materiał obiektu przed renderowaniem.
+      - Definiuje stałe `MAX_POINT_LIGHTS`, `MAX_SPOT_LIGHTS`.
+
+    5.5.4. ShaderProgram.java (bez istotnych zmian, używa istniejących metod setUniform)
+    5.5.5. Texture.java (bez zmian)
+
+    5.5.6. light/ <-- Zaktualizowano
+      - 5.5.6.1. Attenuation.java: Przechowuje współczynniki tłumienia.
+      - 5.5.6.2. DirectionalLight.java: Światło kierunkowe (jedno, rzuca cień).
+      - 5.5.6.3. PointLight.java: Światło punktowe (pozycja, kolor, tłumienie).
+      - 5.5.6.4. SpotLight.java: Światło reflektorowe (zawiera PointLight, kierunek, kąty stożka).
+
+    5.5.7. shadow/ShadowMap.java (bez zmian - nadal tylko dla dirLight)
+    5.5.8. Material.java (bez zmian)
+
+  5.6. Komponenty Sceny (org.example.scene) (bez zmian)
+  ------------------------------------------
+    5.6.1. GameObject.java (przechowuje Material)
+    5.6.2. GameObjectProperties.java
+
+  5.7. Narzędzia (org.example.util) (bez zmian)
+  ----------------------------------
+    5.7.1. MeshLoader.java
+    5.7.2. ModelLoader.java
+    5.7.3. ResourceLoader.java
+    5.7.4. WavLoader.java
+
+  5.8. Logika Gry (org.example.game)
+  ------------------------------------
+    5.8.1. IEngineLogic.java (bez zmian)
+    5.8.2. DemoGame.java
+      - **Inicjalizuje i przechowuje listy różnych typów świateł (`pointLights`, `spotLights`).**
+      - **Metoda `createLights` tworzy przykładowe światła o różnych kolorach i właściwościach.**
+      - **Metoda `input` aktualizuje pozycję/kierunek latarki oraz obsługuje jej włączanie/wyłączanie (klawisz 'T').**
+      - **Wywołanie `renderer.render` przekazuje teraz wszystkie listy świateł.**
+      - Nadal tworzy materiały i obiekty, obsługuje interakcje (F, B).
+
+  5.9. Shadery (src/main/resources/shaders)
+  -------------------------------------------
+    5.9.1. depth_vertex.glsl & depth_fragment.glsl (bez zmian)
+    5.9.2. scene_vertex.glsl (bez istotnych zmian)
+    5.9.3. scene_fragment.glsl
+      - **Znacząco zmodyfikowany, aby obsługiwać tablice `PointLightInfo` i `SpotLightInfo`.**
+      - **Iteruje po aktywnych światłach punktowych i reflektorowych, obliczając ich wkład (z tłumieniem i stożkiem).**
+      - **Sumuje wkłady wszystkich świateł (kierunkowego, punktowych, reflektorowych) oraz ambientu.**
+      - Nadal używa właściwości materiału i tekstur.
+      - Nadal oblicza cień tylko dla światła kierunkowego.
+
+-----------------------------
+6. POTENCJALNE ULEPSZENIA
+-----------------------------
+
+  - Zaawansowany System Materiałów (PBR)
+  - **Cienie dla świateł punktowych/reflektorowych** (Cube Maps / Dual Paraboloid)
+  - **Optymalizacja oświetlenia** (Deferred Shading, Forward+, Tiled Forward)
+  - System Sceny (Graf Sceny, ECS)
+  - Fizyka (JBullet, JOML-Physics)
+  - GUI (ImGui-Java)
+  - Optymalizacje Renderowania (Frustum/Occlusion Culling, Instancing, LOD)
+  - Normal Mapping
+  - Obsługa innych formatów audio/modeli
+  - Lepsza diagnostyka błędów GL (Debug Callback)
+  - Cutscenki / System Skryptowy
+  - Efekty graficzne / Post-processing
+  - Efekty pogodowe
+  - System zapisu/odczytu stanu gry
+
+-------------------
+7. PODSUMOWANIE
+-------------------
+
+Silnik 3D ebil v1.2.4 stanowi solidną, modularną bazę do tworzenia aplikacji 3D
+w Javie z LWJGL 3. **W tej wersji dodano obsługę wielu źródeł światła
+różnych typów (punktowe, reflektorowe) obok istniejącego światła kierunkowego,
+znacznie zwiększając możliwości oświetlenia sceny.** Zaktualizowano renderer
+i shader fragmentów, aby dynamicznie przetwarzały wpływ wielu świateł.
+Demo zawiera teraz przykłady kolorowych świateł oraz interaktywną latarkę.
+Silnik nadal wykorzystuje system materiałów, ładowanie zasobów z classpath
+i rozbudowaną obsługę błędów. Mapowanie cieni pozostaje ograniczone do
+światła kierunkowego.
+
+=============================================
+  Koniec Dokumentacji
+=============================================
