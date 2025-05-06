@@ -1,5 +1,7 @@
 =============================================
   Dokumentacja Silnika 3D ebil (Format TXT)
+              Wersja: 1.2.6
+         Data: RRRR-MM-DD
 =============================================
 
 --------------------
@@ -7,47 +9,46 @@
 --------------------
 
 Niniejszy dokument opisuje strukturę i działanie silnika 3D ebil
-stworzonego przy użyciu biblioteki LWJGL 3 (Lightweight Java Game Library)
-oraz JOML (Java OpenGL Math Library). Silnik ten stanowi elastyczną
-podstawę do tworzenia gier i aplikacji 3D. Kluczową cechą architektury
-jest oddzielenie rdzenia silnika od logiki konkretnej gry/aplikacji
-poprzez interfejs IEngineLogic. Pozwala to na łatwą wymianę lub
-tworzenie różnych gier wykorzystujących ten sam, reużywalny silnik.
+w wersji 1.2.6. Silnik został stworzony przy użyciu biblioteki
+LWJGL 3 (Lightweight Java Game Library) oraz JOML (Java OpenGL Math Library).
+Stanowi on elastyczną podstawę do tworzenia gier i aplikacji 3D.
+Kluczową cechą architektury jest oddzielenie rdzenia silnika od logiki
+konkretnej gry/aplikacji poprzez interfejs IEngineLogic.
 
-Celem silnika jest dostarczenie podstawowych mechanizmów renderowania,
-zarządzania aplikacją, obsługi audio, ładowania zasobów (tekstur, modeli),
-zarządzania materiałami, obsługi wielu źródeł światła oraz solidnej
-obsługi błędów, jednocześnie umożliwiając deweloperowi gry skupienie się
-na jej specyficznej logice i zawartości. W wersji 1.2.5 system renderowania
-został zrefaktoryzowany w celu zwiększenia modularności i przejrzystości.
+Celem tej wersji silnika jest dostarczenie podstawowych mechanizmów renderowania,
+zarządzania aplikacją, obsługi audio, ładowania zasobów, zarządzania
+materiałami, obsługi wielu źródeł światła (w tym cieni kierunkowych)
+oraz interakcji z obiektami opartej na raycastingu.
 
 ---------------------------
-2. GŁÓWNE FUNKCJE SILNIKA
+2. GŁÓWNE FUNKCJE SILNIKA (v1.2.6)
 ---------------------------
 
-  - Zarządzanie Oknem: Tworzenie i zarządzanie oknem aplikacji przy użyciu GLFW.
+  - Zarządzanie Oknem: Tworzenie i zarządzanie oknem aplikacji (GLFW).
   - Kontekst OpenGL: Inicjalizacja i zarządzanie kontekstem graficznym OpenGL (Core Profile 3.3+).
-  - Pętla Gry: Implementacja standardowej pętli gry (input, update, render) delegująca do `IEngineLogic`.
+  - Pętla Gry: Implementacja pętli gry (input, update, render) delegująca do `IEngineLogic`.
   - Obsługa Wejścia: Śledzenie stanu klawiatury i myszy (`Input`).
   - System Czasu: Mierzenie czasu między klatkami (`deltaTime`).
-  - Kamera: Kamera 3D FPS (`Camera`).
+  - Kamera 3D: Kamera typu FPS (`Camera`) z możliwością generowania promienia patrzenia.
   - System Audio: Zarządzanie OpenAL (`AudioManager`), ładowanie WAV (`WavLoader`), źródła (`SoundSource`), słuchacz (`Listener`).
   - Obsługa Tekstur: Ładowanie obrazów (STB) jako tekstur OpenGL (`Texture`).
   - System Materiałów: Definiowanie właściwości powierzchni (`Material`) z kolorami i mapami tekstur.
   - Ładowanie Modeli: Ładowanie geometrii z plików (Assimp) (`ModelLoader`).
   - Obiekty Gry: `GameObject` (Mesh, Material, Transform, Properties), `GameObjectProperties` (Builder).
+      - `GameObject` posiada metodę `intersectsRay()` do detekcji trafienia promieniem.
+      - `GameObjectProperties` zawiera flagę `canBeTargeted` i logikę niszczenia.
+  - Interakcja Raycasting: Możliwość uszkadzania obiektów, na które patrzy gracz.
   - Renderowanie Siatek: `Mesh` (VAO/VBO/EBO z UV).
-  - Zarządzanie Shaderami: `ShaderManager` (ładuje, kompiluje, linkuje shadery GLSL), `ShaderProgram`.
-  - Mapowanie Cieni: `ShadowRenderer` (zarządza `ShadowMap` FBO i przebiegiem głębi dla światła kierunkowego).
-  - Renderowanie Sceny: `SceneRenderer` (wykonuje główny przebieg renderowania z oświetleniem i materiałami).
-  - Orkiestracja Renderowania: Główny `Renderer` (koordynuje `ShaderManager`, `ShadowRenderer`, `SceneRenderer`, `DefaultResourceManager`).
-  - Zasoby Domyślne: `DefaultResourceManager` (zarządza domyślną teksturą i materiałem).
+  - Zarządzanie Shaderami i Renderowaniem: Monolityczna klasa `Renderer` (`org.example.graphics.Renderer`):
+      - Ładuje i zarządza shaderami GLSL (`ShaderProgram`).
+      - Zarządza mapą cieni (`ShadowMap` FBO) dla światła kierunkowego.
+      - Wykonuje przebieg głębi (depth pass) dla cieni kierunkowych.
+      - Wykonuje główny przebieg renderowania sceny (scene pass) z oświetleniem i materiałami.
+      - Zarządza domyślną teksturą i materiałem.
   - Obsługa Wielu Świateł:
-      - Światło kierunkowe (`DirectionalLight`).
+      - Światło kierunkowe (`DirectionalLight`) z obsługą cieni.
       - Światła punktowe (`PointLight`) z tłumieniem (`Attenuation`).
       - Światła reflektorowe (`SpotLight`) z tłumieniem i stożkiem.
-      - `SceneRenderer` przekazuje dane wielu świateł do shadera (do ustalonego limitu).
-      - Shader sceny oblicza wpływ wielu źródeł światła.
   - Ładowanie Zasobów: `ResourceLoader` (z classpath).
   - Obsługa Błędów: Wyjątki `ResourceNotFoundException`, `ResourceLoadException`.
   - Narzędzia: `MeshLoader`, `WavLoader`.
@@ -63,7 +64,7 @@ został zrefaktoryzowany w celu zwiększenia modularności i przejrzystości.
 Projekt używa `pom.xml` z zależnościami: LWJGL (Core, GLFW, OpenGL, OpenAL, STB, Assimp), JOML.
 
 -----------------------------
-4. STRUKTURA PROJEKTU
+4. STRUKTURA PROJEKTU (v1.2.6)
 -----------------------------
 
 Projekt jest zorganizowany w pakiety:
@@ -86,26 +87,20 @@ Projekt jest zorganizowany w pakiety:
     |-- ResourceLoadException.java
     `-- ResourceNotFoundException.java
 
-  org.example.graphics      (Podstawowe elementy graficzne)
+  org.example.graphics      (Podstawowe elementy graficzne i renderer)
     |-- Camera.java           (Kamera 3D)
     |-- Material.java         (Właściwości materiału)
     |-- Mesh.java             (Geometria)
+    |-- Renderer.java         (Główny, monolityczny renderer)
     |-- ShaderProgram.java    (Reprezentacja shadera)
     |-- Texture.java          (Tekstury)
     |-- light/                (System oświetlenia)
-    |   |-- Attenuation.java      (Tłumienie światła)
-    |   |-- DirectionalLight.java (Światło kierunkowe)
-    |   |-- PointLight.java       (Światło punktowe)
-    |   `-- SpotLight.java        (Światło reflektorowe)
+    |   |-- Attenuation.java
+    |   |-- DirectionalLight.java
+    |   |-- PointLight.java
+    |   `-- SpotLight.java
     `-- shadow/
-        `-- ShadowMap.java      (FBO i tekstura mapy cieni)
-
-  org.example.graphics.render (System renderowania) <-- NOWY PAKIET
-    |-- Renderer.java             (Główny orkiestrator)
-    |-- ShaderManager.java        (Zarządzanie shaderami)
-    |-- ShadowRenderer.java       (Renderowanie mapy cieni)
-    |-- SceneRenderer.java        (Renderowanie sceny)
-    `-- DefaultResourceManager.java (Zasoby domyślne)
+        `-- ShadowMap.java      (FBO i tekstura cieni kierunkowych)
 
   org.example.scene         (Scena)
     |-- GameObject.java       (Obiekt gry)
@@ -124,135 +119,75 @@ Projekt jest zorganizowany w pakiety:
   src/main/resources/       (Zasoby)
     |-- audio/
     |-- models/
-    |-- shaders/
+    |-- shaders/              (depth_vertex/fragment.glsl, scene_vertex/fragment.glsl)
     `-- textures/
 
+  legacy/                     (Opcjonalny folder na starsze, zarchiwizowane wersje silnika)
+
 -----------------------
-5. OMÓWIENIE KODU
+5. OMÓWIENIE KODU (v1.2.6)
 -----------------------
 
-Szczegółowe omówienie kluczowych klas i ich odpowiedzialności (z naciskiem na zmiany w v1.2.5):
+  5.1. Główny Punkt Wejścia (org.example.Main)
+    - Uruchamia silnik z implementacją `DemoGame`.
 
-  5.1. Główny Punkt Wejścia (org.example) (bez zmian)
-  ----------------------------------------
-    5.1.1. Main.java
+  5.2. Rdzeń Silnika (org.example.core)
+    - `Engine.java`: Zarządza pętlą gry, inicjalizacją i czyszczeniem modułów.
+    - `Window.java`: Obsługa okna GLFW i kontekstu OpenGL.
+    - `Input.java`: Przetwarzanie wejścia z klawiatury i myszy.
+    - `Timer.java`: Śledzenie czasu (`deltaTime`).
 
-  5.2. Komponenty Rdzenia Silnika (org.example.core) (bez zmian)
-  --------------------------------------------------
-    5.2.1. Engine.java (zaktualizowany import `Renderer`)
-    5.2.2. Window.java
-    5.2.3. Input.java
-    5.2.4. Timer.java
+  5.3. System Audio (org.example.audio)
+    - Zarządzanie dźwiękiem 3D przy użyciu OpenAL.
 
-  5.3. System Audio (org.example.audio) (bez zmian)
-  ---------------------------------------
-    5.3.1. AudioManager.java
-    5.3.2. Listener.java
-    5.3.3. SoundSource.java
+  5.4. Grafika (org.example.graphics)
+    - `Camera.java`: Kamera FPS, generuje promień dla raycastingu.
+    - `Mesh.java`: Geometria obiektu (VAO/VBO/EBO).
+    - `Material.java`: Właściwości materiału (kolory, tekstury, odbicia).
+    - `Texture.java`: Ładowanie i zarządzanie teksturami 2D.
+    - `ShaderProgram.java`: Kompilacja, linkowanie i zarządzanie shaderami GLSL.
+    - `Renderer.java`: **Kluczowa klasa renderująca (monolityczna w tej wersji)**.
+        - Inicjalizuje shadery (sceny i głębi dla cieni kierunkowych).
+        - Inicjalizuje `ShadowMap` (FBO dla cieni kierunkowych).
+        - Wykonuje przebieg renderowania głębi dla `DirectionalLight`.
+        - Wykonuje główny przebieg renderowania sceny, aplikując oświetlenie (wszystkie typy) i cienie kierunkowe.
+        - Zarządza domyślną teksturą i materiałem.
+    - `light/`: Definicje struktur dla różnych typów świateł.
+    - `shadow/ShadowMap.java`: Enkapsulacja FBO i tekstury 2D dla mapy cieni światła kierunkowego.
 
-  5.4. Wyjątki (org.example.exception) (bez zmian)
-  -------------------------------------
-    5.4.1. ResourceNotFoundException.java
-    5.4.2. ResourceLoadException.java
+  5.5. Scena (org.example.scene)
+    - `GameObject.java`: Reprezentacja obiektu w grze, zawiera `Mesh`, `Material`, transformację. Implementuje `intersectsRay()` dla detekcji trafienia promieniem kamery.
+    - `GameObjectProperties.java`: Dodatkowe właściwości obiektu (typ, zniszczalność, HP, `canBeTargeted`), tworzone przez wzorzec Builder. Logika `takeDamage()` i zarządzania widocznością zniszczonych obiektów.
 
-  5.5. Komponenty Graficzne (org.example.graphics)
-  -------------------------------------------------
-    5.5.1. Camera.java (bez zmian)
-    5.5.2. Mesh.java (bez zmian)
-    5.5.3. ShaderProgram.java (bez zmian funkcjonalnych, zarządzany przez `ShaderManager`)
-    5.5.4. Texture.java (bez zmian)
-    5.5.5. light/ (bez zmian)
-      - 5.5.5.1. Attenuation.java
-      - 5.5.5.2. DirectionalLight.java
-      - 5.5.5.3. PointLight.java
-      - 5.5.5.4. SpotLight.java
-    5.5.6. shadow/ShadowMap.java (bez zmian funkcjonalnych, zarządzany przez `ShadowRenderer`)
-    5.5.7. Material.java (bez zmian)
+  5.6. Narzędzia (org.example.util)
+    - Klasy pomocnicze do ładowania zasobów i tworzenia geometrii.
 
-  5.6. System Renderowania (org.example.graphics.render) <-- NOWY PAKIET
-  -----------------------------------------------------
-    5.6.1. Renderer.java (Nowa lokalizacja i rola)
-      - Główny orkiestrator procesu renderowania.
-      - Inicjalizuje i koordynuje komponenty: `ShaderManager`, `ShadowRenderer`, `SceneRenderer`, `DefaultResourceManager`.
-      - Ustawia globalny stan OpenGL (Depth Test, Culling).
-      - Główna metoda `render` deleguje wykonanie do `ShadowRenderer` i `SceneRenderer`.
-      - Zarządza cyklem życia (init, cleanup) podległych komponentów.
+  5.7. Logika Gry (org.example.game)
+    - `IEngineLogic.java`: Interfejs dla logiki gry.
+    - `DemoGame.java`: Implementacja dema pokazująca użycie funkcji silnika, w tym raycasting do interakcji z obiektami (niszczenie kostek po trafieniu promieniem z kamery).
 
-    5.6.2. ShaderManager.java (Nowa klasa)
-      - Odpowiedzialny za ładowanie, kompilację, linkowanie i udostępnianie obiektów `ShaderProgram`.
-      - Tworzy i przechowuje shadery sceny i głębi.
-      - Tworzy niezbędne uniformy dla każdego shadera po udanym linkowaniu.
-
-    5.6.3. ShadowRenderer.java (Nowa klasa)
-      - Odpowiedzialny za renderowanie mapy cieni (Depth Pass).
-      - Inicjalizuje i zarządza obiektem `ShadowMap` (FBO).
-      - Metoda `render` wiąże FBO mapy cieni, ustawia shader głębi i macierz przestrzeni światła, a następnie renderuje geometrię obiektów.
-
-    5.6.4. SceneRenderer.java (Nowa klasa)
-      - Odpowiedzialny za główny przebieg renderowania sceny (Forward Pass).
-      - Otrzymuje zależności (shader sceny, zasoby domyślne, ID mapy cieni).
-      - Metoda `render` ustawia viewport, czyści bufor ramki, wiąże shader sceny.
-      - Ustawia uniformy globalne (kamera, światła, samplery).
-      - Renderuje obiekty sceny, wiążąc ich materiały i używając shadera sceny.
-
-    5.6.5. DefaultResourceManager.java (Nowa klasa)
-      - Odpowiedzialny za tworzenie, udostępnianie i sprzątanie domyślnej tekstury (biały piksel) i domyślnego materiału.
-
-  5.7. Komponenty Sceny (org.example.scene) (bez zmian)
-  ------------------------------------------
-    5.7.1. GameObject.java
-    5.7.2. GameObjectProperties.java
-
-  5.8. Narzędzia (org.example.util) (bez zmian)
-  ----------------------------------
-    5.8.1. MeshLoader.java
-    5.8.2. ModelLoader.java
-    5.8.3. ResourceLoader.java
-    5.8.4. WavLoader.java
-
-  5.9. Logika Gry (org.example.game)
-  ------------------------------------
-    5.9.1. IEngineLogic.java (Zaktualizowano sygnatury metod init/render)
-    5.9.2. DemoGame.java (Zaktualizowany import `Renderer`, sygnatury metod zgodne z `IEngineLogic`)
-      - Funkcjonalność związana ze światłami i interakcją pozostaje bez zmian.
-
-  5.10. Shadery (src/main/resources/shaders)
-  -------------------------------------------
-    - Funkcjonalność shaderów (obsługa wielu świateł, materiałów, cieni dla dirLight) pozostaje bez zmian. Zmienił się sposób, w jaki uniformy są ustawiane przez kod Javy (teraz głównie przez `SceneRenderer`).
+  5.8. Shadery (src/main/resources/shaders)
+    - `depth_vertex.glsl` / `depth_fragment.glsl`: Do generowania mapy cieni kierunkowych.
+    - `scene_vertex.glsl` / `scene_fragment.glsl`: Do renderowania głównej sceny z oświetleniem Phonga, obsługą wielu świateł i próbkowaniem mapy cieni kierunkowych.
 
 -----------------------------
-6. POTENCJALNE ULEPSZENIA
+6. POTENCJALNE ULEPSZENIA (dla przyszłych wersji)
 -----------------------------
 
-  - Zaawansowany System Materiałów (PBR)
-  - **Cienie dla świateł punktowych/reflektorowych** (Cube Maps / Dual Paraboloid)
-  - **Optymalizacja oświetlenia** (Deferred Shading, Forward+, Tiled Forward)
-  - System Sceny (Graf Sceny, ECS)
-  - Fizyka (JBullet, JOML-Physics)
-  - GUI (ImGui-Java)
-  - Optymalizacje Renderowania (Frustum/Occlusion Culling, Instancing, LOD)
-  - Normal Mapping
-  - Obsługa innych formatów audio/modeli
-  - Lepsza diagnostyka błędów GL (Debug Callback)
-  - Cutscenki / System Skryptowy
-  - Efekty graficzne / Post-processing
-  - Efekty pogodowe
-  - System zapisu/odczytu stanu gry
-  - **Bardziej zaawansowane techniki renderowania** (np. różne przebiegi dla przezroczystości, skybox).
+  - **Implementacja menu pauzy** (z obsługą kursora i stanem pauzy w silniku).
+  - **Refaktoryzacja systemu renderowania**: Podział klasy `Renderer` na mniejsze, wyspecjalizowane komponenty (np. `ShaderManager`, `SceneRenderer`, `ShadowRenderer` dla cieni kierunkowych, `SpotLightShadowRenderer` dla cieni reflektorów, `DefaultResourceManager`).
+  - Cienie dla świateł punktowych/reflektorowych (Cube Maps).
+  - Zaawansowany System Materiałów (PBR).
+  - Graficzny Interfejs Użytkownika (GUI).
+  - Optymalizacja oświetlenia (Deferred Shading).
+  - System Fizyki.
+  - Normal Mapping, Post-processing, Skybox.
 
 -------------------
-7. PODSUMOWANIE
+7. PODSUMOWANIE (v1.2.6)
 -------------------
 
-Silnik 3D ebil v1.2.5 stanowi modularną bazę do tworzenia aplikacji 3D
-w Javie z LWJGL 3. **W tej wersji przeprowadzono znaczącą refaktoryzację
-systemu renderowania, dzieląc go na wyspecjalizowane komponenty (`ShaderManager`,
-`ShadowRenderer`, `SceneRenderer`, `DefaultResourceManager`) zarządzane przez
-główny `Renderer`. Poprawia to strukturę i zarządzalność kodu renderującego.**
-Funkcjonalność silnika, w tym obsługa wielu źródeł światła (punktowych,
-reflektorowych, kierunkowego), system materiałów i mapowanie cieni dla
-światła kierunkowego, pozostała zachowana. Zaktualizowano interfejsy i
-klasy używające renderera, aby odzwierciedlić nową strukturę.
+Silnik 3D ebil w wersji 1.2.6 dostarcza solidną podstawę z kluczowymi funkcjami renderowania, w tym oświetleniem, cieniami kierunkowymi oraz systemem materiałów. **Główną nowością w tej wersji jest wprowadzenie interakcji z obiektami opartej na raycastingu**, co pozwala na bardziej precyzyjne celowanie i wpływanie na elementy sceny przez gracza. System renderowania jest w tej wersji reprezentowany przez monolityczną klasę `Renderer`.
 
 =============================================
   Koniec Dokumentacji
