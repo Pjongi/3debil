@@ -3,9 +3,7 @@ package org.example.core;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.*;
 import org.lwjgl.system.*;
-
 import java.nio.*;
-
 import static org.lwjgl.glfw.Callbacks.*;
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
@@ -17,7 +15,7 @@ public class Window {
     private long windowHandle;
     private int width;
     private int height;
-    private final String title; // title jest final
+    private final String title;
     private Input input;
 
     public Window(String title, int width, int height) {
@@ -26,8 +24,11 @@ public class Window {
         this.height = height;
     }
 
-    public void init(Input input) {
-        this.input = input;
+    public void init(Input inputInstance) {
+        this.input = inputInstance;
+        if (this.input == null) {
+            throw new IllegalStateException("Input object cannot be null for Window initialization.");
+        }
 
         GLFWErrorCallback.createPrint(System.err).set();
 
@@ -49,19 +50,7 @@ public class Window {
             throw new RuntimeException("Failed to create the GLFW window");
         }
 
-        glfwSetKeyCallback(windowHandle, (window, key, scancode, action, mods) -> {
-            if (this.input != null) {
-                this.input.getKeyboardCallback().invoke(window, key, scancode, action, mods);
-            }
-            if (key == GLFW_KEY_ESCAPE && action == GLFW_RELEASE) {
-                glfwSetWindowShouldClose(window, true);
-            }
-        });
-
-        glfwSetCursorPosCallback(windowHandle, this.input.getMouseMoveCallback());
-        glfwSetMouseButtonCallback(windowHandle, this.input.getMouseButtonCallback());
-
-        this.input.init(windowHandle);
+        this.input.init(windowHandle); // Input tylko inicjalizuje swoje stany
 
         try (MemoryStack stack = stackPush()) {
             IntBuffer pWidth = stack.mallocInt(1);
@@ -84,7 +73,11 @@ public class Window {
         glfwSwapInterval(1);
         glfwShowWindow(windowHandle);
         GL.createCapabilities();
-        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
+
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
 
         glViewport(0, 0, width, height);
         glfwSetFramebufferSizeCallback(windowHandle, (window, w, h) -> {
@@ -96,74 +89,45 @@ public class Window {
         });
     }
 
-    public boolean isKeyPressed(int keyCode) {
-        return Input.isKeyDown(keyCode);
-    }
+    public boolean isKeyPressed(int keyCode) { return Input.isKeyDown(keyCode); }
+    public boolean windowShouldClose() { return glfwWindowShouldClose(windowHandle); }
 
-    public boolean windowShouldClose() {
-        return glfwWindowShouldClose(windowHandle);
-    }
-
+    /**
+     * Metoda update została uproszczona - glfwPollEvents jest teraz w Engine.loop()
+     */
     public void update() {
-        glfwSwapBuffers(windowHandle);
-        glfwPollEvents();
+        if (windowHandle != NULL) {
+            // Usunięto glfwPollEvents() stąd
+            glfwSwapBuffers(windowHandle);
+        }
     }
 
     public void cleanup() {
-        System.out.println("Window: Cleaning up..."); // Dodaj logowanie dla pewności
-
-        // 1. Zwolnij callbacki związane z inputem (przez Input.cleanup)
+        System.out.println("Window: Cleaning up...");
         if (input != null) {
             input.cleanup();
-            System.out.println("Window: Input callbacks cleaned up.");
+            System.out.println("Window: Input cleanup called.");
         }
+        glfwSetFramebufferSizeCallback(windowHandle, null);
 
-        // 2. Zwolnij pozostałe callbacki okna
-        //glfwFreeCallbacks(windowHandle);
-        //System.out.println("Window: Window callbacks freed.");
-
-        // 3. Zniszcz okno (i powiązany kontekst GL)
         if (windowHandle != NULL) {
             glfwDestroyWindow(windowHandle);
             System.out.println("Window: Window destroyed.");
-            windowHandle = NULL; // Ustaw na NULL po zniszczeniu
+            windowHandle = NULL;
         }
-
-        // --- ZMIANA KOLEJNOŚCI ---
-        // 4. Zwolnij error callback PRZED glfwTerminate()
+        glfwTerminate();
+        System.out.println("Window: GLFW terminated.");
         GLFWErrorCallback callback = glfwSetErrorCallback(null);
         if (callback != null) {
             callback.free();
-            System.out.println("Window: Error callback freed.");
-        } else {
-            System.out.println("Window: No active error callback to free.");
+            System.out.println("Window: GLFW error callback freed.");
         }
-
-        // 5. Zakończ działanie GLFW
-        glfwTerminate();
-        System.out.println("Window: GLFW terminated.");
-        // --- KONIEC ZMIANY KOLEJNOŚCI ---
-
         System.out.println("Window: Cleanup complete.");
     }
 
-    public long getWindowHandle() {
-        return windowHandle;
-    }
-
-    public int getWidth() {
-        return width;
-    }
-
-    public int getHeight() {
-        return height;
-    }
-
-    public String getTitle() {
-        return title;
-    }
-
-    public Input getInput() {
-        return input;
-    }
+    public long getWindowHandle() { return windowHandle; }
+    public int getWidth() { return width; }
+    public int getHeight() { return height; }
+    public String getTitle() { return title; }
+    public Input getInput() { return input; }
 }

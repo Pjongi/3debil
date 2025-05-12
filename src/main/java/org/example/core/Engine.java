@@ -1,33 +1,39 @@
 package org.example.core;
 
-import org.example.graphics.render.Renderer;
 import org.example.audio.AudioManager;
-import org.example.game.IEngineLogic;
 import org.example.graphics.Camera;
+import org.example.graphics.render.Renderer;
+import org.example.game.IEngineLogic;
+import org.example.ui.NuklearGui;
 import org.joml.Vector3f;
+import org.lwjgl.glfw.GLFW;
+import org.lwjgl.nuklear.NkContext;
+import org.lwjgl.nuklear.NkRect;
+import org.lwjgl.nuklear.Nuklear;
+import org.lwjgl.system.MemoryStack;
 
 public class Engine {
 
-    // Zainicjalizuj pola, których inicjalizacja jest w try-catch, wartością null
     private Window window = null;
     private Input input = null;
     private Timer timer = null;
     private Renderer renderer = null;
     private Camera camera = null;
     private AudioManager audioManager = null;
+    private NuklearGui nuklearGui;
 
-    // gameLogic jest final, więc MUSI być zainicjalizowany w konstruktorze (co robimy)
     private final IEngineLogic gameLogic;
     private final String windowTitle;
-    private boolean initializedSuccessfully = false; // Flaga do śledzenia stanu inicjalizacji
 
-    // Konstruktor pozostaje bez zmian w logice
+    private boolean initializedSuccessfully = false;
+    private boolean isPaused = false;
+    private boolean escKeyPressed = false;
+
     public Engine(String windowTitle, int width, int height, IEngineLogic gameLogic) {
         this.windowTitle = windowTitle;
-        this.gameLogic = gameLogic; // Inicjalizacja finalnego pola
+        this.gameLogic = gameLogic;
 
         try {
-            // Inicjalizacje wewnątrz try
             input = new Input();
             timer = new Timer();
             window = new Window(windowTitle, width, height);
@@ -40,16 +46,23 @@ public class Engine {
 
             window.init(input);
 
-            System.out.println("Engine: Initializing Renderer...");
+            System.out.println("Engine: Initializing Renderer (from org.example.graphics.render)...");
             renderer = new Renderer(window);
             renderer.init();
             System.out.println("Engine: Renderer initialized.");
+
+            System.out.println("Engine: Initializing Nuklear GUI...");
+            nuklearGui = new NuklearGui(window);
+            nuklearGui.init();
+            System.out.println("Engine: Nuklear GUI initialized.");
 
             timer.init();
 
             System.out.println("Engine: Initializing game logic...");
             gameLogic.init(window, renderer, audioManager);
             System.out.println("Engine: Game logic initialized.");
+
+            input.setActiveCallbacks();
 
             initializedSuccessfully = true;
 
@@ -66,118 +79,201 @@ public class Engine {
             System.err.println("Cannot run engine, initialization failed.");
             return;
         }
-
         System.out.println("Starting " + windowTitle + "...");
         System.out.println("LWJGL " + org.lwjgl.Version.getVersion() + "!");
         try {
             loop();
-        } catch (Exception e) { // Złap nieoczekiwane błędy w pętli
+        } catch (Exception e) {
             System.err.println("Error during game loop:");
             e.printStackTrace();
         } finally {
-            cleanup(); // Zawsze sprzątaj
+            cleanup();
+        }
+    }
+
+    public void setPaused(boolean paused) {
+        if (this.isPaused == paused) {
+            System.out.println("Engine.setPaused: No change in pause state (" + paused + ")");
+            return;
+        }
+        this.isPaused = paused;
+        if (window == null || input == null || nuklearGui == null) {
+            System.err.println("Engine.setPaused: Critical component is null.");
+            return;
+        }
+
+        if (paused) {
+            System.out.println("Engine: Game Paused - Activating GUI Input. Cursor set to NORMAL.");
+            input.clearCallbacks();
+            nuklearGui.setActiveCallbacks();
+            GLFW.glfwSetInputMode(window.getWindowHandle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+            // Opcjonalnie: Spróbuj jawnie pokazać okno Nukleara, jeśli miałoby problemy z ponownym pojawieniem się
+            if (nuklearGui.getContext() != null) {
+                Nuklear.nk_window_show(nuklearGui.getContext(), "Pause Menu", Nuklear.NK_SHOWN);
+                // System.out.println("Engine: Called nk_window_show for 'Pause Menu'");
+            }
+        } else {
+            System.out.println("Engine: Game Resumed - Activating Game Input. Cursor set to DISABLED.");
+            nuklearGui.clearCallbacks();
+            input.setActiveCallbacks();
+            input.resetMouseDelta();
         }
     }
 
     private void loop() {
-        while (!window.windowShouldClose()) {
+        while (window != null && !window.windowShouldClose()) {
             timer.update();
             float deltaTime = timer.getDeltaTime();
 
-            // Aktualizuj pozycję i orientację słuchacza OpenAL (jeśli audioManager istnieje)
-            if (audioManager != null && audioManager.getListener() != null) {
+            // 1. Przetwórz zdarzenia systemowe
+            GLFW.glfwPollEvents();
+
+            // 2. Rozpocznij input dla Nukleara, JEŚLI jest pauza
+            if (isPaused && nuklearGui != null) {
+                nuklearGui.beginInput();
+            }
+
+            // 3. Logika globalna (ESC do pauzy)
+            boolean escCurrentlyPressed = Input.isKeyDown(GLFW.GLFW_KEY_ESCAPE);
+            if (escCurrentlyPressed && !escKeyPressed) {
+                System.out.println("Engine.loop: ESC pressed, current isPaused: " + isPaused + ", attempting to toggle to: " + !isPaused);
+                setPaused(!isPaused);
+            }
+            escKeyPressed = escCurrentlyPressed;
+
+            // 4. Zakończ input dla Nukleara, JEŚLI jest pauza
+            if (isPaused && nuklearGui != null) {
+                nuklearGui.endInput();
+            }
+
+            // 5. Aktualizacja słuchacza audio
+            if (audioManager != null && audioManager.getListener() != null && camera != null) {
                 audioManager.getListener().setPosition(camera.getPosition());
                 audioManager.getListener().setOrientation(camera.getFront(), camera.getUp());
             }
 
-            // Deleguj do logiki gry
-            gameLogic.input(window, input, camera, deltaTime);
-            gameLogic.update(deltaTime);
-            gameLogic.render(window, camera, renderer); // Zakładamy, że renderer nie jest null, bo sprawdzono w run()
+            // 6. Logika gry / Budowanie GUI i obsługa akcji menu
+            if (!isPaused) {
+                if (gameLogic != null) {
+                    gameLogic.input(window, input, camera, deltaTime);
+                    gameLogic.update(deltaTime);
+                }
+                if (input != null) input.update();
+            } else {
+                if (nuklearGui != null) {
+                    buildPauseMenuAndHandleActions();
+                }
+            }
 
-            window.update();
-            input.update();
+            // 7. Renderowanie
+            if (renderer != null && camera != null && gameLogic != null) {
+                gameLogic.render(window, camera, renderer);
+            }
+
+            if (isPaused && nuklearGui != null) {
+                nuklearGui.renderGUI(Nuklear.NK_ANTI_ALIASING_ON);
+            }
+
+            // 8. Zamiana buforów okna
+            if (window != null) {
+                GLFW.glfwSwapBuffers(window.getWindowHandle());
+            }
         }
     }
 
-    // Metoda pomocnicza do sprzątania po częściowej inicjalizacji
+    private void buildPauseMenuAndHandleActions() {
+        NkContext ctx = nuklearGui.getContext();
+        String menuTitle = "Pause Menu";
+
+        // Sprawdź, czy okno nie zostało zamknięte przez użytkownika (np. 'X') w poprzedniej klatce
+        // Ta logika jest teraz połączona z wynikiem nk_begin
+        // if (Nuklear.nk_window_is_closed(ctx, menuTitle)) {
+        //     System.out.println("Engine: Nuklear window '" + menuTitle + "' was detected as closed by nk_window_is_closed, resuming game.");
+        //     if (isPaused) {
+        //         setPaused(false);
+        //     }
+        //     return;
+        // }
+
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            NkRect rect = NkRect.malloc(stack);
+            float menuWidth = 220;
+            float menuHeight = 100;
+            float x = (window.getWidth() - menuWidth) / 2;
+            float y = (window.getHeight() - menuHeight) / 2;
+
+            // nk_begin zwraca true, jeśli okno jest widoczne i powinno być renderowane.
+            // Zwraca false, jeśli okno jest zamknięte (np. przez NK_WINDOW_CLOSABLE) lub zminimalizowane.
+            if (Nuklear.nk_begin(ctx, menuTitle, Nuklear.nk_rect(x, y, menuWidth, menuHeight, rect),
+                    Nuklear.NK_WINDOW_BORDER | Nuklear.NK_WINDOW_MOVABLE | Nuklear.NK_WINDOW_TITLE | Nuklear.NK_WINDOW_NO_SCROLLBAR | Nuklear.NK_WINDOW_CLOSABLE )) {
+                // Okno jest aktywne, rysujemy zawartość
+                Nuklear.nk_layout_row_dynamic(ctx, 30, 1);
+                if (Nuklear.nk_button_label(ctx, "Resume Game")) {
+                    System.out.println("Engine: 'Resume Game' button clicked via Nuklear.");
+                    setPaused(false);
+                    // Nie ma potrzeby jawnie zamykać okna tutaj, zmiana stanu isPaused
+                    // spowoduje, że buildPauseMenuAndHandleActions nie będzie wywoływane
+                    // a nk_clear() w renderGUI powinno zresetować stan okna.
+                    // Jeśli to nie wystarczy, można dodać nk_window_close(ctx, menuTitle);
+                }
+
+                Nuklear.nk_layout_row_dynamic(ctx, 30, 1);
+                if (Nuklear.nk_button_label(ctx, "Exit to Desktop")) {
+                    System.out.println("Engine: 'Exit to Desktop' button clicked via Nuklear.");
+                    GLFW.glfwSetWindowShouldClose(window.getWindowHandle(), true);
+                }
+            } else {
+                // nk_begin zwróciło false. Oznacza to, że okno zostało zamknięte przez użytkownika
+                // (np. kliknięcie 'X', jeśli flaga NK_WINDOW_CLOSABLE jest ustawiona)
+                // lub jest zminimalizowane. W przypadku zamknięcia, wznów grę.
+                System.out.println("Engine: nk_begin for '" + menuTitle + "' returned false. Resuming game if paused.");
+                if (isPaused) {
+                    setPaused(false);
+                }
+            }
+            Nuklear.nk_end(ctx); // Zawsze wywołuj nk_end dla każdego bloku nk_begin
+        }
+    }
+
     private void cleanupPartialInit() {
         System.out.println("Engine: Cleaning up after partial initialization due to error...");
-        // Sprzątaj w odwrotnej kolejności, sprawdzając null
         if (gameLogic != null) { try { gameLogic.cleanup(); } catch (Exception e) { System.err.println("Error during partial gameLogic cleanup: "+e.getMessage());}}
+        if (nuklearGui != null) { try { nuklearGui.cleanup(); } catch (Exception e) { System.err.println("Error during partial nuklearGui cleanup: "+e.getMessage());}}
         if (renderer != null) { try { renderer.cleanup(); } catch (Exception e) { System.err.println("Error during partial renderer cleanup: "+e.getMessage());}}
         if (audioManager != null) { try { audioManager.cleanup(); } catch (Exception e) { System.err.println("Error during partial audioManager cleanup: "+e.getMessage());}}
         if (window != null) { try { window.cleanup(); } catch (Exception e) { System.err.println("Error during partial window cleanup: "+e.getMessage());}}
-        // Input jest sprzątany przez Window.cleanup()
         System.out.println("Engine: Partial cleanup finished.");
     }
 
-    // Główna metoda sprzątająca
-// W Engine.java
-
     private void cleanup() {
-        // Sprzątaj tylko jeśli inicjalizacja się powiodła
-        if (!initializedSuccessfully) {
-            System.out.println("Engine Cleanup: Skipping cleanup as initialization failed.");
-            return;
-        }
-
+        if (!initializedSuccessfully) { System.out.println("Engine Cleanup: Skipping cleanup as initialization failed."); return; }
         System.out.println("--- Starting Engine Cleanup ---");
-        long cleanupStartTime = System.nanoTime(); // Zmierz czas trwania cleanup
-
+        long cleanupStartTime = System.nanoTime();
         try {
-            System.out.println("Engine Cleanup: Stage 1/4 - Calling gameLogic.cleanup()...");
+            System.out.println("Engine Cleanup: Stage 1/5 - Calling gameLogic.cleanup()...");
             if (gameLogic != null) gameLogic.cleanup();
-            System.out.println("Engine Cleanup: Stage 1/4 - gameLogic.cleanup() finished.");
-        } catch (Exception e) {
-            System.err.println("Error during game logic cleanup: " + e.getMessage());
-            e.printStackTrace();
-        }
-
-        // Dodaj sprawdzenie błędów GL po cleanupie gry, na wszelki wypadek
+            System.out.println("Engine Cleanup: Stage 1/5 - gameLogic.cleanup() finished.");
+        } catch (Exception e) { System.err.println("Error during game logic cleanup: " + e.getMessage()); e.printStackTrace(); }
         try {
-        } catch (Exception e) {
-            System.err.println("GL Error detected after gameLogic cleanup: " + e.getMessage());
-        }
-
+            System.out.println("Engine Cleanup: Stage 2/5 - Calling nuklearGui.cleanup()...");
+            if (nuklearGui != null) nuklearGui.cleanup();
+            System.out.println("Engine Cleanup: Stage 2/5 - nuklearGui.cleanup() finished.");
+        } catch (Exception e) { System.err.println("Error during Nuklear GUI cleanup: " + e.getMessage()); e.printStackTrace(); }
         try {
-            System.out.println("Engine Cleanup: Stage 2/4 - Calling renderer.cleanup()...");
-            if (renderer != null) renderer.cleanup(); // Sprząta zasoby OpenGL (shadery, tekstury, FBO)
-            System.out.println("Engine Cleanup: Stage 2/4 - renderer.cleanup() finished.");
-        } catch (Exception e) {
-            System.err.println("Error during renderer cleanup: " + e.getMessage());
-            e.printStackTrace();
-        }
-
-        // Dodaj sprawdzenie błędów GL po cleanupie renderera
+            System.out.println("Engine Cleanup: Stage 3/5 - Calling renderer.cleanup()...");
+            if (renderer != null) renderer.cleanup();
+            System.out.println("Engine Cleanup: Stage 3/5 - renderer.cleanup() finished.");
+        } catch (Exception e) { System.err.println("Error during renderer cleanup: " + e.getMessage()); e.printStackTrace(); }
         try {
-        } catch (Exception e) {
-            System.err.println("GL Error detected after renderer cleanup: " + e.getMessage());
-        }
-
-
+            System.out.println("Engine Cleanup: Stage 4/5 - Calling audioManager.cleanup()...");
+            if (audioManager != null) audioManager.cleanup();
+            System.out.println("Engine Cleanup: Stage 4/5 - audioManager.cleanup() finished.");
+        } catch (Exception e) { System.err.println("Error during audioManager cleanup: " + e.getMessage()); e.printStackTrace(); }
         try {
-            System.out.println("Engine Cleanup: Stage 3/4 - Calling audioManager.cleanup()...");
-            if (audioManager != null) audioManager.cleanup(); // Sprząta zasoby OpenAL (źródła, bufory, kontekst, urządzenie)
-            System.out.println("Engine Cleanup: Stage 3/4 - audioManager.cleanup() finished.");
-        } catch (Exception e) {
-            System.err.println("Error during audioManager cleanup: " + e.getMessage());
-            e.printStackTrace();
-        }
-
-        // Po audioManager.cleanup() kontekst AL jest zniszczony, nie można sprawdzać błędów AL
-
-        try {
-            System.out.println("Engine Cleanup: Stage 4/4 - Calling window.cleanup()...");
-            if (window != null) window.cleanup(); // Sprząta Input, niszczy okno (i kontekst GL), terminacja GLFW
-            System.out.println("Engine Cleanup: Stage 4/4 - window.cleanup() finished.");
-        } catch (Exception e) {
-            System.err.println("Error during window cleanup: " + e.getMessage());
-            e.printStackTrace();
-        }
-
-        // Po window.cleanup() nie można już wywoływać funkcji GLFW ani OpenGL
-
+            System.out.println("Engine Cleanup: Stage 5/5 - Calling window.cleanup()...");
+            if (window != null) window.cleanup();
+            System.out.println("Engine Cleanup: Stage 5/5 - window.cleanup() finished.");
+        } catch (Exception e) { System.err.println("Error during window cleanup: " + e.getMessage()); e.printStackTrace(); }
         long cleanupEndTime = System.nanoTime();
         System.out.println("--- Engine Cleanup Finished (took " + (cleanupEndTime - cleanupStartTime) / 1_000_000 + " ms) ---");
     }

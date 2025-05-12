@@ -1,7 +1,7 @@
 =============================================
   Dokumentacja Silnika 3D ebil (Format TXT)
-              Wersja: 1.2.6
-         Data: RRRR-MM-DD
+              Wersja: 1.2.7
+         Data: RRRR-MM-DD (Wstaw aktualną datę)
 =============================================
 
 --------------------
@@ -9,7 +9,7 @@
 --------------------
 
 Niniejszy dokument opisuje strukturę i działanie silnika 3D ebil
-w wersji 1.2.6. Silnik został stworzony przy użyciu biblioteki
+w wersji 1.2.7. Silnik został stworzony przy użyciu biblioteki
 LWJGL 3 (Lightweight Java Game Library) oraz JOML (Java OpenGL Math Library).
 Stanowi on elastyczną podstawę do tworzenia gier i aplikacji 3D.
 Kluczową cechą architektury jest oddzielenie rdzenia silnika od logiki
@@ -17,17 +17,20 @@ konkretnej gry/aplikacji poprzez interfejs IEngineLogic.
 
 Celem tej wersji silnika jest dostarczenie podstawowych mechanizmów renderowania,
 zarządzania aplikacją, obsługi audio, ładowania zasobów, zarządzania
-materiałami, obsługi wielu źródeł światła (w tym cieni kierunkowych)
-oraz interakcji z obiektami opartej na raycastingu.
+materiałami, obsługi wielu źródeł światła (w tym cieni kierunkowych),
+interakcji z obiektami opartej na raycastingu oraz prostego menu pauzy
+renderowanego za pomocą biblioteki Nuklear.
 
 ---------------------------
-2. GŁÓWNE FUNKCJE SILNIKA (v1.2.6)
+2. GŁÓWNE FUNKCJE SILNIKA (v1.2.7)
 ---------------------------
 
   - Zarządzanie Oknem: Tworzenie i zarządzanie oknem aplikacji (GLFW).
   - Kontekst OpenGL: Inicjalizacja i zarządzanie kontekstem graficznym OpenGL (Core Profile 3.3+).
   - Pętla Gry: Implementacja pętli gry (input, update, render) delegująca do `IEngineLogic`.
-  - Obsługa Wejścia: Śledzenie stanu klawiatury i myszy (`Input`).
+  - Obsługa Wejścia: Śledzenie stanu klawiatury i myszy (`Input.java`).
+      - Dynamiczne przełączanie aktywnych callbacków GLFW między systemem inputu gry a GUI.
+      - Zarządzanie trybem kursora (widoczny/ukryty, zablokowany/odblokowany) w zależności od stanu pauzy.
   - System Czasu: Mierzenie czasu między klatkami (`deltaTime`).
   - Kamera 3D: Kamera typu FPS (`Camera`) z możliwością generowania promienia patrzenia.
   - System Audio: Zarządzanie OpenAL (`AudioManager`), ładowanie WAV (`WavLoader`), źródła (`SoundSource`), słuchacz (`Listener`).
@@ -35,20 +38,22 @@ oraz interakcji z obiektami opartej na raycastingu.
   - System Materiałów: Definiowanie właściwości powierzchni (`Material`) z kolorami i mapami tekstur.
   - Ładowanie Modeli: Ładowanie geometrii z plików (Assimp) (`ModelLoader`).
   - Obiekty Gry: `GameObject` (Mesh, Material, Transform, Properties), `GameObjectProperties` (Builder).
-      - `GameObject` posiada metodę `intersectsRay()` do detekcji trafienia promieniem.
+      - `GameObject` posiada metodę `intersectsRay()` dla detekcji trafienia promieniem.
       - `GameObjectProperties` zawiera flagę `canBeTargeted` i logikę niszczenia.
   - Interakcja Raycasting: Możliwość uszkadzania obiektów, na które patrzy gracz.
-  - Renderowanie Siatek: `Mesh` (VAO/VBO/EBO z UV).
-  - Zarządzanie Shaderami i Renderowaniem: Monolityczna klasa `Renderer` (`org.example.graphics.Renderer`):
-      - Ładuje i zarządza shaderami GLSL (`ShaderProgram`).
-      - Zarządza mapą cieni (`ShadowMap` FBO) dla światła kierunkowego.
-      - Wykonuje przebieg głębi (depth pass) dla cieni kierunkowych.
-      - Wykonuje główny przebieg renderowania sceny (scene pass) z oświetleniem i materiałami.
-      - Zarządza domyślną teksturą i materiałem.
+  - Renderowanie Grafiki: (Stan z zrefaktoryzowanym systemem renderowania w `org.example.graphics.render`)
+      - `Renderer` (główny orkiestrator w `org.example.graphics.render`).
+      - `ShaderManager` (zarządzanie shaderami GLSL).
+      - `ShadowRenderer` (mapa cieni dla światła kierunkowego).
+      - `SceneRenderer` (główny przebieg renderowania sceny).
+      - `DefaultResourceManager` (domyślna tekstura i materiał).
   - Obsługa Wielu Świateł:
       - Światło kierunkowe (`DirectionalLight`) z obsługą cieni.
       - Światła punktowe (`PointLight`) z tłumieniem (`Attenuation`).
       - Światła reflektorowe (`SpotLight`) z tłumieniem i stożkiem.
+  - Interfejs Użytkownika (GUI):
+      - Integracja z biblioteką **Nuklear** (`NuklearGui.java` w pakiecie `org.example.ui`).
+      - **Menu Pauzy:** Aktywowane klawiszem `ESC`, renderowane przez Nuklear. Pozwala na wznowienie gry lub jej zamknięcie.
   - Ładowanie Zasobów: `ResourceLoader` (z classpath).
   - Obsługa Błędów: Wyjątki `ResourceNotFoundException`, `ResourceLoadException`.
   - Narzędzia: `MeshLoader`, `WavLoader`.
@@ -56,138 +61,106 @@ oraz interakcji z obiektami opartej na raycastingu.
 -------------------------------
 3. WYMAGANIA I KONFIGURACJA
 -------------------------------
-
+  *(Bez zmian w stosunku do v1.2.6, ale upewnij się, że zależności Nuklear są w pom.xml)*
   - Java Development Kit (JDK): Wersja 11 lub nowsza (zalecana 17+).
-  - Maven: System budowania projektu (lub Gradle).
-  - System Operacyjny: Windows, Linux lub macOS (wymaga poprawnej konfiguracji `lwjgl.natives` w pom.xml).
+  - Maven: System budowania projektu.
+  - System Operacyjny: Windows, Linux lub macOS.
 
-Projekt używa `pom.xml` z zależnościami: LWJGL (Core, GLFW, OpenGL, OpenAL, STB, Assimp), JOML.
+Projekt używa `pom.xml` z zależnościami: LWJGL (Core, GLFW, OpenGL, OpenAL, STB, Assimp, **Nuklear**), JOML.
 
 -----------------------------
-4. STRUKTURA PROJEKTU (v1.2.6)
+4. STRUKTURA PROJEKTU (v1.2.7)
 -----------------------------
-
-Projekt jest zorganizowany w pakiety:
 
   org.example
-    |-- Main.java             (Punkt wejścia)
+    |-- Main.java
 
-  org.example.core          (Rdzeń silnika)
-    |-- Engine.java           (Główna klasa silnika)
-    |-- Window.java           (Okno i kontekst GL)
-    |-- Input.java            (Obsługa wejścia)
-    |-- Timer.java            (Czas)
+  org.example.core
+    |-- Engine.java
+    |-- Window.java
+    |-- Input.java
+    |-- Timer.java
 
-  org.example.audio         (System dźwięku)
-    |-- AudioManager.java     (Zarządzanie OpenAL)
-    |-- Listener.java         (Słuchacz)
-    `-- SoundSource.java      (Źródło dźwięku)
+  org.example.audio
+    |-- ... (bez zmian)
 
-  org.example.exception     (Niestandardowe wyjątki)
-    |-- ResourceLoadException.java
-    `-- ResourceNotFoundException.java
+  org.example.exception
+    |-- ... (bez zmian)
 
-  org.example.graphics      (Podstawowe elementy graficzne i renderer)
-    |-- Camera.java           (Kamera 3D)
-    |-- Material.java         (Właściwości materiału)
-    |-- Mesh.java             (Geometria)
-    |-- Renderer.java         (Główny, monolityczny renderer)
-    |-- ShaderProgram.java    (Reprezentacja shadera)
-    |-- Texture.java          (Tekstury)
-    |-- light/                (System oświetlenia)
-    |   |-- Attenuation.java
-    |   |-- DirectionalLight.java
-    |   |-- PointLight.java
-    |   `-- SpotLight.java
-    `-- shadow/
-        `-- ShadowMap.java      (FBO i tekstura cieni kierunkowych)
+  org.example.graphics
+    |-- Camera.java
+    |-- Material.java
+    |-- Mesh.java
+    |-- ShaderProgram.java
+    |-- Texture.java
+    |-- light/
+    `-- shadow/ShadowMap.java (dla cieni kierunkowych)
+       `-- (SpotLightShadowMap.java - jeśli wróciłeś do tego)
 
-  org.example.scene         (Scena)
-    |-- GameObject.java       (Obiekt gry)
-    `-- GameObjectProperties.java (Właściwości obiektu z Builderem)
+  org.example.graphics.render  (Zrefaktoryzowany system renderowania)
+    |-- Renderer.java
+    |-- ShaderManager.java
+    |-- ShadowRenderer.java (dla cieni kierunkowych)
+    |-- SceneRenderer.java
+    |-- DefaultResourceManager.java
+    `-- (SpotLightShadowRenderer.java - jeśli wróciłeś do tego)
 
-  org.example.util          (Narzędzia)
-    |-- MeshLoader.java       (Tworzenie siatek)
-    |-- ModelLoader.java      (Ładowanie modeli)
-    |-- ResourceLoader.java   (Ładowanie zasobów z classpath)
-    `-- WavLoader.java        (Parsowanie WAV)
+  org.example.scene
+    |-- ... (bez zmian)
 
-  org.example.game          (Logika gry)
-    |-- IEngineLogic.java     (Interfejs logiki gry)
-    `-- DemoGame.java         (Implementacja dema)
+  org.example.util
+    |-- ... (bez zmian)
 
-  src/main/resources/       (Zasoby)
+  org.example.ui              (NOWY PAKIET)
+    `-- NuklearGui.java       (Zarządzanie Nuklear GUI)
+
+  org.example.game
+    |-- IEngineLogic.java     (Sygnatury metod init/render używają `org.example.graphics.render.Renderer`)
+    `-- DemoGame.java         (Używa `org.example.graphics.render.Renderer`)
+
+  src/main/resources/
+    |-- fonts/                (NOWY KATALOG, np. FiraSans.ttf)
     |-- audio/
     |-- models/
-    |-- shaders/              (depth_vertex/fragment.glsl, scene_vertex/fragment.glsl)
+    |-- shaders/              (shadery sceny, głębi, a także dla Nukleara)
     `-- textures/
 
-  legacy/                     (Opcjonalny folder na starsze, zarchiwizowane wersje silnika)
+  versions
+    `-- legacy/
 
 -----------------------
-5. OMÓWIENIE KODU (v1.2.6)
+5. OMÓWIENIE KODU (v1.2.7)
 -----------------------
 
-  5.1. Główny Punkt Wejścia (org.example.Main)
-    - Uruchamia silnik z implementacją `DemoGame`.
+  Szczegółowe omówienie zmian:
 
-  5.2. Rdzeń Silnika (org.example.core)
-    - `Engine.java`: Zarządza pętlą gry, inicjalizacją i czyszczeniem modułów.
-    - `Window.java`: Obsługa okna GLFW i kontekstu OpenGL.
-    - `Input.java`: Przetwarzanie wejścia z klawiatury i myszy.
-    - `Timer.java`: Śledzenie czasu (`deltaTime`).
+  5.1. Rdzeń Silnika (org.example.core)
+    - `Engine.java`:
+        - Inicjalizuje i zarządza obiektem `NuklearGui`.
+        - Metoda `setPaused()` dynamicznie przełącza aktywne callbacki GLFW między `Input.java` (dla gry) a `NuklearGui.java` (dla menu). Kontroluje również tryb kursora myszy.
+        - Główna pętla (`loop()`) została zmodyfikowana, aby poprawnie integrować cykl życia Nukleara (`beginInput`, `endInput`, `renderGUI`) z logiką gry. `glfwPollEvents()` jest teraz wywoływane centralnie w `Engine.loop()`.
+        - Metoda `buildPauseMenuAndHandleActions()` definiuje układ i logikę prostego menu pauzy (przyciski "Resume", "Exit") używając Nukleara.
+    - `Input.java`:
+        - Dodano metody `setActiveCallbacks()` i `clearCallbacks()` do zarządzania rejestracją/wyrejestrowaniem swoich callbacków GLFW.
+        - Metoda `init()` nie ustawia już callbacków automatycznie.
+    - `Window.java`:
+        - Metoda `update()` została uproszczona do samego `glfwSwapBuffers()`, ponieważ `glfwPollEvents()` jest teraz w `Engine.loop()`.
 
-  5.3. System Audio (org.example.audio)
-    - Zarządzanie dźwiękiem 3D przy użyciu OpenAL.
-
-  5.4. Grafika (org.example.graphics)
-    - `Camera.java`: Kamera FPS, generuje promień dla raycastingu.
-    - `Mesh.java`: Geometria obiektu (VAO/VBO/EBO).
-    - `Material.java`: Właściwości materiału (kolory, tekstury, odbicia).
-    - `Texture.java`: Ładowanie i zarządzanie teksturami 2D.
-    - `ShaderProgram.java`: Kompilacja, linkowanie i zarządzanie shaderami GLSL.
-    - `Renderer.java`: **Kluczowa klasa renderująca (monolityczna w tej wersji)**.
-        - Inicjalizuje shadery (sceny i głębi dla cieni kierunkowych).
-        - Inicjalizuje `ShadowMap` (FBO dla cieni kierunkowych).
-        - Wykonuje przebieg renderowania głębi dla `DirectionalLight`.
-        - Wykonuje główny przebieg renderowania sceny, aplikując oświetlenie (wszystkie typy) i cienie kierunkowe.
-        - Zarządza domyślną teksturą i materiałem.
-    - `light/`: Definicje struktur dla różnych typów świateł.
-    - `shadow/ShadowMap.java`: Enkapsulacja FBO i tekstury 2D dla mapy cieni światła kierunkowego.
-
-  5.5. Scena (org.example.scene)
-    - `GameObject.java`: Reprezentacja obiektu w grze, zawiera `Mesh`, `Material`, transformację. Implementuje `intersectsRay()` dla detekcji trafienia promieniem kamery.
-    - `GameObjectProperties.java`: Dodatkowe właściwości obiektu (typ, zniszczalność, HP, `canBeTargeted`), tworzone przez wzorzec Builder. Logika `takeDamage()` i zarządzania widocznością zniszczonych obiektów.
-
-  5.6. Narzędzia (org.example.util)
-    - Klasy pomocnicze do ładowania zasobów i tworzenia geometrii.
-
-  5.7. Logika Gry (org.example.game)
-    - `IEngineLogic.java`: Interfejs dla logiki gry.
-    - `DemoGame.java`: Implementacja dema pokazująca użycie funkcji silnika, w tym raycasting do interakcji z obiektami (niszczenie kostek po trafieniu promieniem z kamery).
-
-  5.8. Shadery (src/main/resources/shaders)
-    - `depth_vertex.glsl` / `depth_fragment.glsl`: Do generowania mapy cieni kierunkowych.
-    - `scene_vertex.glsl` / `scene_fragment.glsl`: Do renderowania głównej sceny z oświetleniem Phonga, obsługą wielu świateł i próbkowaniem mapy cieni kierunkowych.
-
------------------------------
-6. POTENCJALNE ULEPSZENIA (dla przyszłych wersji)
------------------------------
-
-  - **Implementacja menu pauzy** (z obsługą kursora i stanem pauzy w silniku).
-  - **Refaktoryzacja systemu renderowania**: Podział klasy `Renderer` na mniejsze, wyspecjalizowane komponenty (np. `ShaderManager`, `SceneRenderer`, `ShadowRenderer` dla cieni kierunkowych, `SpotLightShadowRenderer` dla cieni reflektorów, `DefaultResourceManager`).
-  - Cienie dla świateł punktowych/reflektorowych (Cube Maps).
-  - Zaawansowany System Materiałów (PBR).
-  - Graficzny Interfejs Użytkownika (GUI).
-  - Optymalizacja oświetlenia (Deferred Shading).
-  - System Fizyki.
-  - Normal Mapping, Post-processing, Skybox.
+  5.2. Interfejs Użytkownika (org.example.ui)
+    - `NuklearGui.java`:
+        - Nowa klasa odpowiedzialna za całą logikę związaną z biblioteką Nuklear.
+        - Inicjalizuje kontekst Nukleara, ładuje czcionkę, konfiguruje shadery i bufory OpenGL specyficzne dla Nukleara.
+        - Posiada własny zestaw obiektów callback GLFW (`GLFWKeyCallback`, `GLFWMouseButtonCallback` itp.).
+        - Metody `setActiveCallbacks()` i `clearCallbacks()` służą do włączania/wyłączania tych callbacków.
+        - Metody `beginInput()` i `endInput()` opakowują `nk_input_begin()` i `nk_input_end()` Nukleara.
+        - Metoda `renderGUI()` wykonuje konwersję poleceń Nukleara na operacje rysowania OpenGL i renderuje interfejs.
+        - Zarządza czyszczeniem zasobów Nukleara.
 
 -------------------
-7. PODSUMOWANIE (v1.2.6)
+6. PODSUMOWANIE (v1.2.7)
 -------------------
 
-Silnik 3D ebil w wersji 1.2.6 dostarcza solidną podstawę z kluczowymi funkcjami renderowania, w tym oświetleniem, cieniami kierunkowymi oraz systemem materiałów. **Główną nowością w tej wersji jest wprowadzenie interakcji z obiektami opartej na raycastingu**, co pozwala na bardziej precyzyjne celowanie i wpływanie na elementy sceny przez gracza. System renderowania jest w tej wersji reprezentowany przez monolityczną klasę `Renderer`.
+Silnik 3D ebil w wersji 1.2.7 wprowadza podstawowy, ale funkcjonalny system menu pauzy renderowany za pomocą biblioteki Nuklear. Kluczowe zmiany obejmują integrację NuklearGui z główną pętlą silnika oraz implementację dynamicznego przełączania obsługi inputu między grą a interfejsem użytkownika. Gracz może teraz zapauzować grę klawiszem ESC, wejść w interakcję z menu (wznowić lub wyjść) i płynnie powrócić do rozgrywki. Silnik nadal wykorzystuje zrefaktoryzowaną architekturę renderowania (z klasami w `org.example.graphics.render`).
 
 =============================================
   Koniec Dokumentacji

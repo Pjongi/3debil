@@ -6,36 +6,31 @@
 
 Architektura silnika została zaprojektowana z myślą o modularności, oddzielając rdzeń silnika od logiki konkretnej gry poprzez interfejs `IEngineLogic`.
 
-**Aktualna Wersja: 1.2.6** (z dnia: RRRR-MM-DD - Zastąp datą)
+**Aktualna Wersja: 1.2.7** 
 
 ## Główne Funkcje
 
 *   **Zarządzanie Oknem i Kontekstem OpenGL:** Inicjalizacja i obsługa okna aplikacji (GLFW) oraz kontekstu graficznego OpenGL (Core Profile 3.3+).
 *   **Pętla Gry:** Standardowa implementacja pętli gry (input, update, render).
-*   **Obsługa Wejścia:** Śledzenie stanu klawiatury i myszy.
-*   **Kamera 3D:** Kamera typu FPS z możliwością poruszania się i rozglądania.
-    *   Generowanie promienia patrzenia (`getRayOrigin()`, `getRayDirection()`) na potrzeby raycastingu.
-*   **System Audio:** Podstawowe zarządzanie dźwiękiem przestrzennym przy użyciu OpenAL (ładowanie plików WAV, źródła dźwięku, słuchacz).
-*   **Renderowanie Grafiki:** (Stan przed refaktoryzacją na podkomponenty renderujące)
-    *   Ładowanie i renderowanie siatek (Mesh) z obsługą VAO, VBO, EBO.
-    *   Obsługa tekstur 2D (ładowanie z plików obrazów przy użyciu STB).
-    *   System materiałów definiujący właściwości powierzchni obiektów.
-    *   Ładowanie modeli 3D z popularnych formatów (np. `.obj`) przy użyciu biblioteki Assimp.
+*   **Obsługa Wejścia:** Śledzenie stanu klawiatury i myszy (`Input.java`), dynamiczne przełączanie callbacków GLFW.
+*   **Kamera 3D:** Kamera typu FPS (`Camera`) z możliwością generowania promienia patrzenia.
+*   **System Audio:** Podstawowe zarządzanie dźwiękiem przestrzennym przy użyciu OpenAL.
+*   **Renderowanie Grafiki:** (Wersja z monolitycznym `org.example.graphics.render.Renderer`)
+    *   Ładowanie i renderowanie siatek (Mesh).
+    *   Obsługa tekstur 2D (ładowanie z plików obrazów STB).
+    *   System materiałów (`Material`).
+    *   Ładowanie modeli 3D (Assimp).
 *   **Oświetlenie:**
-    *   Obsługa wielu źródeł światła:
-        *   Światło kierunkowe (Directional Light).
-        *   Światła punktowe (Point Light) z tłumieniem (attenuation).
-        *   Światła reflektorowe (Spot Light) z tłumieniem i stożkiem.
-    *   Dynamiczne cienie rzucane przez światło kierunkowe (Shadow Mapping z teksturą 2D, zarządzane przez klasę `org.example.graphics.Renderer`).
+    *   Obsługa światła kierunkowego, punktowych i reflektorowych.
+    *   Dynamiczne cienie rzucane przez światło kierunkowe.
 *   **Scena i Obiekty Gry:**
-    *   Struktura `GameObject` agregująca siatkę, materiał i transformację.
-        *   Metoda `intersectsRay()` do sprawdzania przecięcia z promieniem (bounding sphere).
-    *   `GameObjectProperties` do przechowywania dodatkowych atrybutów obiektów (np. typ, możliwość zniszczenia, punkty życia, `canBeTargeted`) z wykorzystaniem wzorca Budowniczego.
-    *   **Interakcja z obiektami oparta na raycastingu:** Możliwość uszkadzania obiektów, na które bezpośrednio patrzy gracz.
-*   **Zarządzanie Zasobami:**
-    *   Ładowanie zasobów (tekstury, modele, dźwięki) z classpath.
-    *   Narzędzia pomocnicze do tworzenia prostych siatek i parsowania plików WAV.
-*   **Obsługa Błędów:** Dedykowane wyjątki dla problemów z ładowaniem zasobów.
+    *   `GameObject` i `GameObjectProperties`.
+    *   Interakcja z obiektami oparta na raycastingu (niszczenie obiektów).
+*   **Interfejs Użytkownika (GUI):**
+    *   Integracja z biblioteką **Nuklear** (`NuklearGui.java`).
+    *   **Menu Pauzy:** Aktywowane klawiszem `ESC`, pozwala na wznowienie gry lub jej zamknięcie. Kursor myszy jest zarządzany odpowiednio do stanu pauzy.
+*   **Zarządzanie Zasobami:** Ładowanie zasobów z classpath (`ResourceLoader`).
+*   **Obsługa Błędów:** Dedykowane wyjątki.
 
 *(Szczegółowy dziennik zmian znajduje się w pliku CHANGELOG.md)*
 
@@ -44,57 +39,50 @@ Architektura silnika została zaprojektowana z myślą o modularności, oddziela
 Projekt jest zorganizowany w następujące główne pakiety:
 
 *   `org.example.core`: Rdzeń silnika (Engine, Window, Input, Timer).
-*   `org.example.audio`: System dźwięku (AudioManager, SoundSource, Listener).
+*   `org.example.audio`: System dźwięku.
 *   `org.example.graphics`: Podstawowe komponenty graficzne (Camera, Mesh, Material, Texture, ShaderProgram, Renderer, light/, shadow/).
-*   `org.example.scene`: Elementy sceny (GameObject, GameObjectProperties).
-*   `org.example.util`: Klasy narzędziowe (ResourceLoader, ModelLoader, MeshLoader, WavLoader).
-*   `org.example.game`: Interfejs logiki gry (`IEngineLogic`) oraz przykładowa implementacja (`DemoGame`).
+    *   **`org.example.graphics.render`**: (To była pomyłka, używamy `org.example.graphics.Renderer` na tym etapie)
+*   `org.example.scene`: Elementy sceny.
+*   `org.example.util`: Klasy narzędziowe.
+*   `org.example.ui`: Komponenty interfejsu użytkownika (**`NuklearGui.java`**).
+*   `org.example.game`: Interfejs logiki gry (`IEngineLogic`) oraz `DemoGame`.
 *   `org.example.exception`: Niestandardowe wyjątki.
 
-Zasoby (shadery, tekstury, modele, dźwięki) znajdują się w katalogu `src/main/resources/`.
-Wersje archiwalne silnika będą dostępne w folderze `/legacy/` (jeśli zdecydujesz się go tak utrzymywać).
+Zasoby (czcionki, shadery, tekstury, modele, dźwięki) znajdują się w katalogu `src/main/resources/`.
+Wersje archiwalne silnika będą dostępne w folderze `/legacy/`.
 
 ## Wymagania Systemowe i Konfiguracja
-
-*   **Java Development Kit (JDK):** Wersja 11 lub nowsza (zalecana 17+).
-*   **Maven:** Projekt wykorzystuje Maven do zarządzania zależnościami i budowania.
-*   **System Operacyjny:** Windows, Linux lub macOS. Należy pamiętać o odpowiedniej konfiguracji natywnych bibliotek LWJGL w pliku `pom.xml` dla docelowego systemu.
+* Java Development Kit (JDK): Wersja 11 lub nowsza (zalecana 17+).
+* Maven: Projekt wykorzystuje Maven do zarządzania zależnościami i budowania.
+* System Operacyjny: Windows, Linux lub macOS. Należy pamiętać o odpowiedniej konfiguracji natywnych bibliotek LWJGL w pliku pom.xml dla docelowego systemu.
 
 ### Zależności (Maven `pom.xml`)
-
-Główne zależności to:
-*   LWJGL (Core, GLFW, OpenGL, OpenAL, STB, Assimp)
-*   JOML (Java OpenGL Math Library)
-
+*   LWJGL (Core, GLFW, OpenGL, OpenAL, STB, Assimp, **Nuklear**)
+*   JOML
 
 ## Sterowanie w Demo
 
 *   **W, A, S, D:** Poruszanie się kamerą.
 *   **Spacja:** Kamera w górę.
 *   **Lewy Shift:** Kamera w dół.
-*   **Mysz:** Rozglądanie się.
-*   **ESC:** Zamyka aplikację.
-*   **F:** Interakcja / Atak (na obiekt, na który patrzysz).
-*   **T:** Włącz/Wyłącz latarkę.
-*   **B:** (Testowo) Przełącz widoczność obiektu "BunnyStatue".
+*   **Mysz:** Rozglądanie się (gdy gra nie jest zapauzowana).
+*   **ESC:** Pauza / Wznowienie gry (otwiera/zamyka menu pauzy).
+    *   **Mysz w menu:** Wybór opcji.
+*   **F:** Interakcja / Atak (na obiekt, na który patrzysz, gdy gra nie jest zapauzowana).
+*   **T:** Włącz/Wyłącz latarkę (gdy gra nie jest zapauzowana).
+*   **B:** (Testowo) Przełącz widoczność obiektu "BunnyStatue" (gdy gra nie jest zapauzowana).
 
 ## Potencjalne Rozszerzenia i Przyszłe Prace
 
-*   **Implementacja menu pauzy:** Umożliwienie pauzowania gry i wyboru opcji.
-*   **Refaktoryzacja systemu renderowania:** Podział klasy `Renderer` na mniejsze, wyspecjalizowane komponenty.
-*   Implementacja bardziej zaawansowanego systemu materiałów (np. PBR).
-*   Dodanie graficznego interfejsu użytkownika (GUI) dla menu i HUD.
+*   **Refaktoryzacja systemu renderowania**: Podział klasy `org.example.graphics.Renderer` na mniejsze komponenty.
+*   **Ulepszenie zarządzania callbackami GLFW** między `Input` a `NuklearGui` (np. poprzez system zdarzeń lub centralny menedżer inputu).
+*   Rozbudowa menu pauzy o dodatkowe opcje (np. ustawienia grafiki, dźwięku).
+*   Implementacja graficznego celownika 2D.
 *   Cienie dla świateł punktowych i reflektorowych.
-*   Optymalizacja oświetlenia.
-*   Wprowadzenie systemu fizyki.
-*   Zaawansowane techniki renderowania (Normal Mapping, Post-processing, Skybox).
-*   Rozbudowa systemu zarządzania sceną.
 
 ## Autor
-
-*   Pjongi
+*Pjongi*
 
 ## Licencja
-
 
 ---
