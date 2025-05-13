@@ -97,7 +97,6 @@ public class NuklearGui {
         if (!nk_init(ctx, ALLOCATOR, null)) {
             throw new IllegalStateException("Failed to initialize Nuklear context");
         }
-        // Callbacki są teraz ustawiane przez Engine dynamicznie
         setupFont();
         setupOpenGL();
 
@@ -181,11 +180,16 @@ public class NuklearGui {
         });
 
         cursorPosCallback = GLFWCursorPosCallback.create((windowHandle, xpos, ypos) -> {
+            // System.out.println("NuklearGui cursorPosCallback: x=" + xpos + ", y=" + ypos); // ODDEBUGUJ W RAZIE POTRZEBY
             if (ctx != null && ctx.input() != null) nk_input_motion(ctx, (int) xpos, (int) ypos);
         });
 
         mouseButtonCallback = GLFWMouseButtonCallback.create((windowHandle, button, action, mods) -> {
-            if (ctx == null || ctx.input() == null) return;
+            System.out.println("NuklearGui mouseButtonCallback: button=" + button + ", action=" + action + " (PRESS="+(action == GLFW_PRESS)+")");
+            if (ctx == null || ctx.input() == null) {
+                System.out.println("NuklearGui mouseButtonCallback: ctx or input is null! Cannot process button.");
+                return;
+            }
             try (MemoryStack stack = MemoryStack.stackPush()) {
                 DoubleBuffer cx = stack.mallocDouble(1);
                 DoubleBuffer cy = stack.mallocDouble(1);
@@ -199,6 +203,7 @@ public class NuklearGui {
                     default: nkButton = NK_BUTTON_LEFT;
                 }
                 nk_input_button(ctx, nkButton, x, y, action == GLFW_PRESS);
+                System.out.println("NuklearGui: nk_input_button called with nkButton=" + nkButton + ", x=" + x + ", y=" + y + ", press=" + (action == GLFW_PRESS)); // DODATKOWY LOG
             }
         });
     }
@@ -390,6 +395,17 @@ public class NuklearGui {
     public void endInput() {
         if (ctx != null && ctx.input() != null) {
             NkMouse mouse = ctx.input().mouse();
+
+            // +++ DODATKOWE LOGI PRZED nk_input_end +++
+            if (mouse.buttons(NK_BUTTON_LEFT).down() && mouse.buttons(NK_BUTTON_LEFT).clicked() == 0) {
+                // Sprawdzamy .down() ORAZ .clicked() == 0 aby zobaczyć, czy przycisk jest wciśnięty, ale jeszcze nie "kliknięty"
+                System.out.println("NuklearGui.endInput: NK_BUTTON_LEFT is currently DOWN. Pos: " + mouse.pos().x() + "," + mouse.pos().y());
+            }
+            if (mouse.buttons(NK_BUTTON_LEFT).clicked() != 0) {
+                System.out.println("NuklearGui.endInput: NK_BUTTON_LEFT was CLICKED this frame according to Nuklear state. Click count: " + mouse.buttons(NK_BUTTON_LEFT).clicked());
+            }
+            // +++++++++++++++++++++++++++++++++++++++
+
             if (mouse.grab()) {
                 glfwSetInputMode(glfwWindowHandle, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
             } else if (mouse.grabbed()) {
@@ -401,7 +417,8 @@ public class NuklearGui {
             } else if (mouse.ungrab()) {
                 glfwSetInputMode(glfwWindowHandle, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
             }
-            nk_input_end(ctx);
+            nk_input_end(ctx); // Finalizuje input dla tej ramki
+            // System.out.println("NuklearGui: nk_input_end() called.");
         }
     }
 
@@ -522,7 +539,6 @@ public class NuklearGui {
         if (default_font != null) {
             if (default_font.query() != null) default_font.query().free();
             if (default_font.width() != null) default_font.width().free();
-            // Upewnij się, że tekstura czcionki jest usuwana tylko jeśli nie jest to null_texture
             if (default_font.texture().id() != 0 && (null_texture == null || default_font.texture().id() != null_texture.texture().id())) {
                 GL11.glDeleteTextures(default_font.texture().id());
             }
