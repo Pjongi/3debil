@@ -154,42 +154,36 @@ public class Window {
     }
 
     public void cleanup() {
-        System.out.println("Window: Cleaning up...");
+        System.out.println("Window: Cleaning up (SIMPLIFIED)...");
+
+        if (windowHandle != NULL) {
+            // Najpierw zniszcz okno
+            System.out.println("Window: Destroying window...");
+            glfwDestroyWindow(windowHandle);
+            windowHandle = NULL;
+            System.out.println("Window: Window destroyed.");
+        }
+
+        // Potem zwolnij callbacki przypisane do Input i NuklearGui (jeśli są)
+        // Te metody powinny zwalniać tylko swoje własne obiekty callback
         if (input != null) {
-            input.cleanup(); // Input też może mieć zasoby do zwolnienia (callbacki)
+            System.out.println("Window: Calling input.cleanup()...");
+            input.cleanup();
             System.out.println("Window: Input cleanup called.");
         }
+        // W Engine.cleanup() jest już wywołanie nuklearGui.cleanup(), więc nie tutaj
 
-        // Zwolnij callbacki GLFW przypisane do tego okna
-        glfwSetErrorCallback(null); // Najpierw globalny error callback
-        if (windowHandle != NULL) {
-            glfwFreeCallbacks(windowHandle); // Zwolnij wszystkie callbacki okna
-            glfwSetFramebufferSizeCallback(windowHandle, null); // Jawne usunięcie, chociaż glfwFreeCallbacks powinno to zrobić
-            // Usuń inne callbacki, jeśli były ustawiane bezpośrednio na windowHandle (np. key, mouse)
-            // ale teraz są zarządzane przez Input i NuklearGui
-        }
-
-
-        // Zniszcz okno i zakończ GLFW
-        if (windowHandle != NULL) {
-            glfwDestroyWindow(windowHandle);
-            System.out.println("Window: Window destroyed.");
-            windowHandle = NULL; // Zapobiegaj wielokrotnemu użyciu
-        }
-
-        // glfwTerminate powinno być wywołane tylko raz na końcu działania aplikacji,
-        // gdy wszystkie okna GLFW zostaną zniszczone.
-        // Jeśli masz tylko jedno okno, to jest to dobre miejsce.
+        // Na samym końcu terminate GLFW i zwolnij error callback
+        System.out.println("Window: Terminating GLFW...");
         glfwTerminate();
         System.out.println("Window: GLFW terminated.");
 
-        // Zwolnij error callback, który został ustawiony na początku
         GLFWErrorCallback callback = glfwSetErrorCallback(null);
         if (callback != null) {
             callback.free();
             System.out.println("Window: GLFW error callback freed.");
         }
-        System.out.println("Window: Cleanup complete.");
+        System.out.println("Window: Cleanup complete (SIMPLIFIED).");
     }
 
     // --- Gettery ---
