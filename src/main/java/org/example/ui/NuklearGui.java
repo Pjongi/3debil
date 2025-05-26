@@ -429,7 +429,7 @@ public class NuklearGui {
 
     // To jest kluczowa metoda do sprawdzenia
     private void updateAndDrawHitMarker(float deltaTime) {
-        if (showHitMarker) {
+        /*if (showHitMarker) {
             // Odkomentuj te logi, aby zobaczyć co się dzieje
             // System.out.println("NUKLEARGUI: updateAndDrawHitMarker - ACTIVE. Timer BEFORE: " + hitMarkerTimer + ", Delta: " + deltaTime);
             hitMarkerTimer -= deltaTime;
@@ -476,7 +476,7 @@ public class NuklearGui {
                     nk_end(ctx);
                 }
             }
-        }
+        }*/
     }
 
     public void renderGUI(int AA, float deltaTime) { // Bez zmian w stosunku do ostatniej działającej wersji

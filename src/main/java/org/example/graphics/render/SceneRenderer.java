@@ -9,13 +9,14 @@ import org.example.graphics.light.DirectionalLight;
 import org.example.graphics.light.PointLight;
 import org.example.graphics.light.SpotLight;
 import org.example.scene.GameObject;
-import org.example.scene.GameObjectProperties; // Dodano, jeśli używasz do efektów
+import org.example.scene.GameObjectProperties;
 import org.joml.Vector3f;
+import org.lwjgl.opengl.GL11; // Import dla GL11 explicitnie
 
 import java.util.List;
 
-import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL13.*;
+import static org.lwjgl.opengl.GL11.*; // Ogólne importy GL11
+import static org.lwjgl.opengl.GL13.*; // Dla jednostek tekstur
 import static org.example.graphics.render.Renderer.MAX_POINT_LIGHTS;
 import static org.example.graphics.render.Renderer.MAX_SPOT_LIGHTS;
 
@@ -25,11 +26,7 @@ public class SceneRenderer {
     private ShaderProgram sceneShader;
     private Texture defaultTexture;
     private Material defaultMaterial;
-    private int shadowMapTextureId = -1; // Dla cieni kierunkowych
-
-    // Opcjonalnie, jeśli integrujesz cienie reflektorowe bezpośrednio tutaj
-    // private int spotLightShadowCubeMapTextureId = -1;
-    // private float spotLightShadowFarPlane = 30.0f; // Domyślna wartość
+    private int shadowMapTextureId = -1;
 
     private static final float DEFAULT_SHADOW_BIAS = 0.005f;
 
@@ -38,29 +35,17 @@ public class SceneRenderer {
         this.window = window;
     }
 
-    // Główna metoda konfiguracji zależności
     public void setupDependencies(ShaderProgram sceneShader, Texture defaultTexture, Material defaultMaterial, int shadowMapTextureId) {
         this.sceneShader = sceneShader;
         this.defaultTexture = defaultTexture;
         this.defaultMaterial = defaultMaterial;
         this.shadowMapTextureId = shadowMapTextureId;
 
-        if (this.sceneShader == null || this.defaultTexture == null || this.defaultMaterial == null /* shadowMapTextureId może być -1, jeśli nie ma cieni */) {
-            // Złagodzono warunek dla shadowMapTextureId, ponieważ cienie mogą być opcjonalne
-            if (this.sceneShader == null || this.defaultTexture == null || this.defaultMaterial == null) {
-                throw new IllegalStateException("SceneRenderer core dependencies (shader, defaultTexture, defaultMaterial) not fully set.");
-            }
+        if (this.sceneShader == null || this.defaultTexture == null || this.defaultMaterial == null) {
+            throw new IllegalStateException("SceneRenderer core dependencies (shader, defaultTexture, defaultMaterial) not fully set.");
         }
         System.out.println("  SceneRenderer: Dependencies set.");
     }
-
-    // Opcjonalna metoda do ustawienia tekstury cieni reflektorowych, jeśli shader sceny ich używa
-    /*
-    public void setSpotLightShadowMapTexture(int cubeMapTextureId, float farPlane) {
-        this.spotLightShadowCubeMapTextureId = cubeMapTextureId;
-        this.spotLightShadowFarPlane = farPlane;
-    }
-    */
 
     public void render(Camera camera, List<GameObject> gameObjects,
                        DirectionalLight dirLight, List<PointLight> pointLights, List<SpotLight> spotLights) {
@@ -74,20 +59,29 @@ public class SceneRenderer {
             return;
         }
 
-        // 1. Ustaw viewport na rozmiar okna i wyczyść bufor ramki
-        // Kolor czyszczenia jest ustawiany globalnie w Renderer.setupOpenGLState()
-        // lub może być ustawiony tutaj, jeśli chcesz inny kolor tła dla tej konkretnej sceny.
-        // glClearColor(0.1f, 0.1f, 0.15f, 1.0f); // Przykład - jeśli chcesz nadpisać globalny
-        glViewport(0, 0, window.getWidth(), window.getHeight());
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // <--- KLUCZOWE CZYSZCZENIE EKRANU
+        // 1. Ustaw viewport i wyczyść bufor ramki.
+        // Ustawienie bardzo charakterystycznego koloru tła do testów.
+        // Jeśli tło pod GUI jest inne niż ten kolor, to znaczy, że coś dzieje się PÓŹNIEJ.
+        GL11.glClearColor(0.0f, 1.0f, 0.0f, 1.0f); // JASNOZIELONY, NIEPRZEZROCZYSTY
+        // System.out.println("SCENERENDERER: Clearing screen with GREEN"); // Możesz odkomentować ten log
+
+        // Użyj rozmiarów framebuffera dla viewportu, jeśli są dostępne, inaczej rozmiar okna
+        int fbWidth = window.getWidth(); // Domyślnie szerokość logiczna
+        int fbHeight = window.getHeight(); // Domyślnie wysokość logiczna
+        // Można by dodać metody getFramebufferWidth/Height do klasy Window, jeśli przechowuje te wartości
+        // lub pobierać je bezpośrednio z GLFW, ale to wymagałoby przekazania windowHandle lub instancji Window
+        // Na razie używamy getWidth()/getHeight(), zakładając, że są to odpowiednie rozmiary dla viewportu.
+        // W Window.init() viewport jest ustawiany na podstawie glfwGetFramebufferSize.
+        glViewport(0, 0, fbWidth, fbHeight);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         sceneShader.bind();
 
-        // 2. Ustawienie uniformów globalnych (per-frame)
+        // 2. Ustawienie uniformów globalnych
         setCameraUniforms(camera);
-        setDirectionalLightUniforms(dirLight); // Uwzględnia shadowMapTextureId
+        setDirectionalLightUniforms(dirLight);
         setPointLightsUniforms(pointLights);
-        setSpotLightsUniforms(spotLights);     // Obecnie bez obsługi cieni reflektorowych w tym shaderze
+        setSpotLightsUniforms(spotLights);
         setSamplerUniforms();
 
         // 3. Renderowanie obiektów sceny
@@ -112,14 +106,11 @@ public class SceneRenderer {
             sceneShader.setUniform("shadowBias", DEFAULT_SHADOW_BIAS);
 
             if (shadowMapTextureId != -1) {
-                glActiveTexture(GL_TEXTURE2); // Jednostka tekstury dla mapy cieni (np. 2)
+                glActiveTexture(GL_TEXTURE2);
                 glBindTexture(GL_TEXTURE_2D, shadowMapTextureId);
             }
         } else {
             sceneShader.setUniform("dirLight.intensity", 0.0f);
-            // Opcjonalnie odwiąż teksturę, jeśli była wcześniej związana
-            // glActiveTexture(GL_TEXTURE2);
-            // glBindTexture(GL_TEXTURE_2D, 0);
         }
     }
 
@@ -150,7 +141,7 @@ public class SceneRenderer {
                 SpotLight sl = spotLights.get(i);
                 if (sl == null || sl.pointLight == null) continue;
                 String base = "spotLights[" + i + "].";
-                String plBase = base + "pl."; // Struktura zagnieżdżona w shaderze
+                String plBase = base + "pl.";
                 sceneShader.setUniform(plBase + "position", sl.pointLight.position);
                 sceneShader.setUniform(plBase + "color", sl.pointLight.color);
                 sceneShader.setUniform(plBase + "intensity", sl.pointLight.intensity);
@@ -160,32 +151,17 @@ public class SceneRenderer {
                 sceneShader.setUniform(base + "direction", sl.direction);
                 sceneShader.setUniform(base + "cutOffCos", sl.getCutOffCos());
                 sceneShader.setUniform(base + "outerCutOffCos", sl.getOuterCutOffCos());
-
-                // Jeśli shader obsługuje cienie reflektorowe:
-                /*
-                if (spotLightShadowCubeMapTextureId != -1 && i == 0) { // Załóżmy, że tylko pierwszy reflektor rzuca cień dla uproszczenia
-                    glActiveTexture(GL_TEXTURE3); // Inna jednostka tekstury
-                    glBindTexture(GL_TEXTURE_CUBE_MAP, spotLightShadowCubeMapTextureId);
-                    sceneShader.setUniform("spotLightShadowMap", 3); // Sampler cube mapy
-                    sceneShader.setUniform("spotLightFarPlane", spotLightShadowFarPlane);
-                    sceneShader.setUniform("spotLightPos", sl.pointLight.position); // Pozycja światła potrzebna do obliczeń w shaderze
-                }
-                */
             }
         }
         sceneShader.setUniform("numSpotLights", numActiveLights);
     }
 
     private void setSamplerUniforms() {
-        sceneShader.setUniform("diffuseSampler", Material.DIFFUSE_MAP_TEXTURE_UNIT);   // 0
-        sceneShader.setUniform("specularSampler", Material.SPECULAR_MAP_TEXTURE_UNIT); // 1
-        if (shadowMapTextureId != -1) { // Ustawiaj sampler tylko jeśli mapa cieni jest używana
-            sceneShader.setUniform("shadowMapSampler", 2); // Jednostka tekstury 2 dla cieni kierunkowych
+        sceneShader.setUniform("diffuseSampler", Material.DIFFUSE_MAP_TEXTURE_UNIT);
+        sceneShader.setUniform("specularSampler", Material.SPECULAR_MAP_TEXTURE_UNIT);
+        if (shadowMapTextureId != -1) {
+            sceneShader.setUniform("shadowMapSampler", 2);
         }
-        // Jeśli używasz cieni reflektorowych, ustaw odpowiedni sampler:
-        // if (spotLightShadowCubeMapTextureId != -1) {
-        //     sceneShader.setUniform("spotLightShadowMap", 3); // Np. jednostka 3
-        // }
     }
 
     private void renderSceneObjects(List<GameObject> gameObjects) {
@@ -198,39 +174,24 @@ public class SceneRenderer {
 
             Material materialToUse = go.getMaterial() != null ? go.getMaterial() : defaultMaterial;
             GameObjectProperties props = go.getProperties();
+            Vector3f originalColorCache = null;
 
-            // Logika dla efektu wizualnego trafienia (zmiana koloru)
-            // To jest prosta implementacja; może wymagać dostosowania, jeśli materiały są współdzielone.
-            Vector3f originalColor = null;
             if (props.isHitEffectActive() && materialToUse != null) {
                 if (props.getOriginalMaterialDiffuseColor() == null) {
                     props.setOriginalMaterialDiffuseColor(materialToUse.getDiffuseColor());
                 }
-                originalColor = new Vector3f(materialToUse.getDiffuseColor()); // Zapisz aktualny
-                // Ustaw kolor "błysku" - można go parametryzować
-                materialToUse.setDiffuseColor(new Vector3f(1.0f, 0.6f, 0.6f)); // Jasnoczerwony błysk
-            }
-
-            materialToUse.bind(sceneShader, defaultTexture);
-
-            // Przywróć oryginalny kolor materiału PO związaniu i wysłaniu uniformów,
-            // aby nie wpłynąć na inne obiekty współdzielące ten sam materiał.
-            if (originalColor != null && materialToUse != null && props.getOriginalMaterialDiffuseColor() != null) {
-                // Jeśli efekt się skończył w tej klatce (po updateHitEffect, a przed renderowaniem tego obiektu)
-                if (!props.isHitEffectActive()) {
-                    materialToUse.setDiffuseColor(props.getOriginalMaterialDiffuseColor());
-                    props.setOriginalMaterialDiffuseColor(null); // Wyczyść
-                } else {
-                    // Efekt jest nadal aktywny, ale musimy przywrócić kolor na wypadek współdzielenia materiału
-                    materialToUse.setDiffuseColor(originalColor);
-                }
+                originalColorCache = new Vector3f(materialToUse.getDiffuseColor());
+                materialToUse.setDiffuseColor(new Vector3f(1.0f, 0.5f, 0.5f));
             } else if (!props.isHitEffectActive() && props.getOriginalMaterialDiffuseColor() != null && materialToUse != null) {
-                // Ten przypadek obsługuje sytuację, gdy efekt skończył się w poprzedniej klatce,
-                // a `originalColor` nie został ustawiony w tej iteracji pętli.
                 materialToUse.setDiffuseColor(props.getOriginalMaterialDiffuseColor());
                 props.setOriginalMaterialDiffuseColor(null);
             }
 
+            materialToUse.bind(sceneShader, defaultTexture);
+
+            if (originalColorCache != null && props.isHitEffectActive() && materialToUse != null) {
+                materialToUse.setDiffuseColor(originalColorCache);
+            }
 
             go.getMesh().render();
         }
@@ -242,6 +203,5 @@ public class SceneRenderer {
         defaultTexture = null;
         defaultMaterial = null;
         shadowMapTextureId = -1;
-        // spotLightShadowCubeMapTextureId = -1;
     }
 }

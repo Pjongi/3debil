@@ -65,7 +65,7 @@ public class DemoGame implements IEngineLogic {
     @Override
     public void init(Window window, Renderer renderer, AudioManager audioManager, NuklearGui nuklearGui) throws Exception {
         this.audioManager = audioManager;
-        this.nuklearGui = nuklearGui; // Zapisz referencję
+        this.nuklearGui = nuklearGui;
         this.gameObjects = new ArrayList<>();
         this.meshes = new HashMap<>();
         this.textures = new HashMap<>();
@@ -324,21 +324,19 @@ public class DemoGame implements IEngineLogic {
 
                 if (targetedObject.getProperties().isDestructible() && targetedObject.getProperties().isAlive()) {
                     System.out.println("Attacking " + targetedObject.getProperties().getTypeName() + "!");
-                    if (targetedObject.takeDamage(25)) { // takeDamage wywołuje triggerHitEffect w GameObjectProperties
+                    if (targetedObject.takeDamage(25)) { // takeDamage wewnętrznie wywołuje triggerHitEffect
                         System.out.println("  " + targetedObject.getProperties().getTypeName() + " DESTROYED!");
                     }
                     System.out.println("  " + targetedObject.getProperties().getTypeName() + " HP: " + targetedObject.getProperties().getCurrentHitPoints() + "/" + targetedObject.getProperties().getMaxHitPoints());
                 } else if (!targetedObject.getProperties().isDestructible()){
                     System.out.println("  " + targetedObject.getProperties().getTypeName() + " is not destructible.");
-                    // Nawet jeśli niezniszczalny, ale targetowalny, pokażmy Hit Marker
-                    targetedObject.getProperties().triggerHitEffect();
+                    targetedObject.getProperties().triggerHitEffect(); // Pokaż efekt nawet dla niezniszczalnych
                 } else if (!targetedObject.getProperties().isAlive()){
                     System.out.println("  " + targetedObject.getProperties().getTypeName() + " is already destroyed.");
                 }
 
-                // Trigger Hit Marker GUI
                 if (this.nuklearGui != null) {
-                    System.out.println("DEMOGAME: Triggering Hit Marker via NuklearGUI!"); // LOG
+                    // System.out.println("DEMOGAME: Triggering Hit Marker via NuklearGUI!"); // LOG już jest w NuklearGui
                     this.nuklearGui.triggerHitMarker();
                 }
 
@@ -396,10 +394,8 @@ public class DemoGame implements IEngineLogic {
     @Override
     public void update(float deltaTime) {
         for (GameObject go : gameObjects) {
-            // Aktualizacja efektu trafienia (jeśli zaimplementowano wizualny efekt na obiekcie)
-            go.getProperties().updateHitEffect(deltaTime);
+            go.getProperties().updateHitEffect(deltaTime); // Dla efektów wizualnych na obiekcie
 
-            // Logika rotacji sześcianów
             if (go.getMesh() == meshes.get("cube") && go.isVisible() && go.getProperties().isAlive()) {
                 Vector3f pos = go.getPosition();
                 if (Math.abs(pos.x - (-2.5f)) < 0.1f && Math.abs(pos.z - (-2.5f)) < 0.1f) {
@@ -419,11 +415,10 @@ public class DemoGame implements IEngineLogic {
             List<GameObject> visibleObjects = new ArrayList<>();
             for (GameObject go : gameObjects) {
                 if (go.isVisible()) {
-                    // Tutaj można by dodać logikę zmiany materiału/uniformów dla efektu trafienia
-                    // jeśli GameObjectProperties.isHitEffectActive() jest true
                     visibleObjects.add(go);
                 }
             }
+            // System.out.println("DemoGame.render: Calling renderer.render with " + visibleObjects.size() + " objects."); // LOG
             renderer.render(camera, visibleObjects, directionalLight, pointLights, spotLights);
         } else {
             if (renderer == null || !renderer.isReady()) System.err.println("DemoGame.render(): Renderer not ready or null.");

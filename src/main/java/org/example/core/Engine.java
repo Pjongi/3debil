@@ -10,6 +10,10 @@ import org.lwjgl.glfw.GLFW;
 import org.lwjgl.nuklear.NkContext;
 import org.lwjgl.nuklear.NkRect;
 import org.lwjgl.nuklear.Nuklear;
+import org.lwjgl.opengl.GL11; // Import dla testowego rysowania
+import org.lwjgl.opengl.GL15; // Import dla testowego rysowania
+import org.lwjgl.opengl.GL20; // Import dla testowego rysowania
+import org.lwjgl.opengl.GL30; // Import dla testowego rysowania
 import org.lwjgl.system.MemoryStack;
 
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
@@ -32,6 +36,10 @@ public class Engine {
     private boolean initializedSuccessfully = false;
     private boolean isPaused = false;
     private boolean escKeyPressed = false;
+
+    // Zmienne dla testowego shadera (jeśli zdecydujesz się go użyć)
+    // private int testQuadProgram;
+    // private int testQuadVao;
 
     public Engine(String windowTitle, int width, int height, IEngineLogic gameLogic) {
         this.windowTitle = windowTitle;
@@ -68,6 +76,10 @@ public class Engine {
 
             input.setActiveCallbacks();
 
+            // Inicjalizacja testowego shadera (opcjonalnie, jeśli chcesz go mieć gotowego)
+            // initTestQuadShader();
+
+
             initializedSuccessfully = true;
 
         } catch (Exception e) {
@@ -77,6 +89,53 @@ public class Engine {
             initializedSuccessfully = false;
         }
     }
+
+    /*
+    // Opcjonalna metoda do inicjalizacji testowego shadera raz
+    private void initTestQuadShader() {
+        String testVertSrc = "#version 330 core\n" +
+                             "layout (location = 0) in vec2 aPos;\n" +
+                             "void main() { gl_Position = vec4(aPos.x, aPos.y, 0.0, 1.0); }";
+        String testFragSrc = "#version 330 core\n" +
+                             "out vec4 FragColor;\n" +
+                             "uniform vec4 u_Color;\n" +
+                             "void main() { FragColor = u_Color; }";
+
+        testQuadProgram = GL20.glCreateProgram();
+        int vs = GL20.glCreateShader(GL20.GL_VERTEX_SHADER);
+        GL20.glShaderSource(vs, testVertSrc);
+        GL20.glCompileShader(vs);
+        if (GL20.glGetShaderi(vs, GL20.GL_COMPILE_STATUS) == GL11.GL_FALSE) System.err.println("Test VS fail: " + GL20.glGetShaderInfoLog(vs));
+        GL20.glAttachShader(testQuadProgram, vs);
+
+        int fs = GL20.glCreateShader(GL20.GL_FRAGMENT_SHADER);
+        GL20.glShaderSource(fs, testFragSrc);
+        GL20.glCompileShader(fs);
+        if (GL20.glGetShaderi(fs, GL20.GL_COMPILE_STATUS) == GL11.GL_FALSE) System.err.println("Test FS fail: " + GL20.glGetShaderInfoLog(fs));
+        GL20.glAttachShader(testQuadProgram, fs);
+
+        GL20.glLinkProgram(testQuadProgram);
+        if (GL20.glGetProgrami(testQuadProgram, GL20.GL_LINK_STATUS) == GL11.GL_FALSE) System.err.println("Test Prog Link fail: " + GL20.glGetProgramInfoLog(testQuadProgram));
+
+        GL20.glDeleteShader(vs);
+        GL20.glDeleteShader(fs);
+
+        float[] vertices = {
+            -1.0f, -1.0f,  1.0f, -1.0f,  1.0f,  1.0f,
+            -1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f
+        };
+        testQuadVao = GL30.glGenVertexArrays();
+        int vbo = GL15.glGenBuffers(); // vbo może być lokalne
+        GL30.glBindVertexArray(testQuadVao);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, vertices, GL15.GL_STATIC_DRAW);
+        GL20.glVertexAttribPointer(0, 2, GL11.GL_FLOAT, false, 0, 0);
+        GL20.glEnableVertexAttribArray(0);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+        // Nie usuwamy vbo tutaj, jeśli jest częścią VAO
+    }
+    */
 
     public void run() {
         if (!initializedSuccessfully) {
@@ -125,38 +184,31 @@ public class Engine {
             timer.update();
             float deltaTime = timer.getDeltaTime();
 
-            // 1. Rozpocznij input dla Nukleara (zawsze, jeśli istnieje)
             if (nuklearGui != null) {
                 nuklearGui.beginInput();
             }
 
-            // 2. Przetwórz zdarzenia systemowe
             GLFW.glfwPollEvents();
 
-            // 3. Logika Nukleara dla menu pauzy (tylko gdy spauzowane)
             if (isPaused && nuklearGui != null) {
-                buildPauseMenuAndHandleActions(); // Definiuje UI menu pauzy
+                buildPauseMenuAndHandleActions();
             }
 
-            // Zakończ input Nukleara (zawsze, jeśli istnieje)
             if (nuklearGui != null) {
                 nuklearGui.endInput();
             }
 
-            // 4. Logika globalna (ESC do pauzy)
             boolean escCurrentlyPressed = (window != null && glfwGetKey(window.getWindowHandle(), GLFW_KEY_ESCAPE) == GLFW_PRESS);
             if (escCurrentlyPressed && !escKeyPressed) {
                 setPaused(!isPaused);
             }
             escKeyPressed = escCurrentlyPressed;
 
-            // 5. Aktualizacja słuchacza audio
             if (audioManager != null && audioManager.getListener() != null && camera != null) {
                 audioManager.getListener().setPosition(camera.getPosition());
                 audioManager.getListener().setOrientation(camera.getFront(), camera.getUp());
             }
 
-            // 6. Logika gry (tylko gdy nie spauzowane)
             if (!isPaused) {
                 if (gameLogic != null) {
                     gameLogic.input(window, input, camera, deltaTime);
@@ -166,25 +218,50 @@ public class Engine {
             }
 
             // 7. Renderowanie sceny gry
-            // To powinno zawierać glClear dla sceny 3D
+            // To powinno zawierać glClear dla sceny 3D (realizowane w SceneRenderer.render)
             if (renderer != null && camera != null && gameLogic != null) {
+                // System.out.println("ENGINE: Calling gameLogic.render()"); // LOG (odkomentuj do testów)
                 gameLogic.render(window, camera, renderer);
             }
 
-            // 8. Renderowanie GUI (Nuklear) - menu pauzy ORAZ HUD (np. HitMarker)
-            // Ta metoda NIE powinna czyścić całego ekranu, jeśli ma być rysowana na scenie
+            // TESTOWE RYSOANIE - ODkomentuj poniższy blok do testów
+            /*
+            {
+                GL11.glDisable(GL11.GL_DEPTH_TEST);
+                GL11.glEnable(GL11.GL_BLEND);
+                GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+
+                GL20.glUseProgram(testQuadProgram);
+                // Ustaw kolor na półprzezroczysty zielony
+                int colorLoc = GL20.glGetUniformLocation(testQuadProgram, "u_Color");
+                GL20.glUniform4f(colorLoc, 0.0f, 1.0f, 0.0f, 0.3f); // RGBA
+
+                GL30.glBindVertexArray(testQuadVao);
+                GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 6);
+                GL30.glBindVertexArray(0);
+                GL20.glUseProgram(0);
+
+                // Przywróć stan (jeśli potrzebne przed Nuklearem, ale Nuklear sam ustawia swój stan)
+                // GL11.glEnable(GL11.GL_DEPTH_TEST);
+                // GL11.glDisable(GL_BLEND);
+                System.out.println("ENGINE LOOP: Drew test green quad.");
+            }
+            */
+
+
+            // 8. Renderowanie GUI (Nuklear)
             if (nuklearGui != null) {
+                // System.out.println("ENGINE: Calling nuklearGui.renderGUI()"); // LOG (odkomentuj do testów)
                 nuklearGui.renderGUI(Nuklear.NK_ANTI_ALIASING_ON, deltaTime);
             }
 
-            // 9. Zamiana buforów okna
             if (window != null) {
                 GLFW.glfwSwapBuffers(window.getWindowHandle());
             }
         }
     }
 
-    private void buildPauseMenuAndHandleActions() {
+    private void buildPauseMenuAndHandleActions() { // Bez zmian...
         NkContext ctx = nuklearGui.getContext();
         if (ctx == null) return;
 
@@ -222,7 +299,7 @@ public class Engine {
         }
     }
 
-    private void cleanupPartialInit() {
+    private void cleanupPartialInit() { // Bez zmian...
         System.out.println("Engine: Cleaning up after partial initialization due to error...");
         if (gameLogic != null) { try { gameLogic.cleanup(); } catch (Exception e) { System.err.println("Error during partial gameLogic cleanup: "+e.getMessage()); e.printStackTrace();}}
         if (nuklearGui != null) { try { nuklearGui.cleanup(); } catch (Exception e) { System.err.println("Error during partial nuklearGui cleanup: "+e.getMessage()); e.printStackTrace();}}
@@ -232,7 +309,13 @@ public class Engine {
         System.out.println("Engine: Partial cleanup finished.");
     }
 
-    private void cleanup() {
+    private void cleanup() { // Bez zmian...
+        // Opcjonalne czyszczenie testowego shadera, jeśli był inicjalizowany
+        // if (testQuadProgram != 0) GL20.glDeleteProgram(testQuadProgram);
+        // if (testQuadVao != 0) GL30.glDeleteVertexArrays(testQuadVao);
+        // (VBO dla testowego kwadratu jest usuwane, jeśli jest tworzone lokalnie w initTestQuadShader lub nie jest potrzebne po usunięciu VAO)
+
+
         if (!initializedSuccessfully) { System.out.println("Engine Cleanup: Skipping cleanup as initialization failed."); return; }
         System.out.println("--- Starting Engine Cleanup ---");
         long cleanupStartTime = System.nanoTime();
