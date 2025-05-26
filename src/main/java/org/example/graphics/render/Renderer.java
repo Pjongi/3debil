@@ -8,46 +8,38 @@ import org.example.graphics.light.DirectionalLight;
 import org.example.graphics.light.PointLight;
 import org.example.graphics.light.SpotLight;
 import org.example.scene.GameObject;
+import org.lwjgl.opengl.GL11; // Dla glGetError
+import static org.lwjgl.opengl.GL30.GL_INVALID_FRAMEBUFFER_OPERATION;
 
 import java.util.List;
 
 import static org.lwjgl.opengl.GL11.*; // Importy dla stanu OpenGL
 
-/**
- * Główny orkiestrator procesu renderowania.
- * Inicjalizuje i koordynuje komponenty renderujące (ShaderManager,
- * ShadowRenderer, SceneRenderer, DefaultResourceManager) i zarządza
- * podstawowym stanem OpenGL.
- */
 public class Renderer {
 
-    // === Stałe (przeniesione tutaj dla centralizacji) ===
     public static final int MAX_POINT_LIGHTS = 4;
-    public static final int MAX_SPOT_LIGHTS = 2;
+    public static final int MAX_SPOT_LIGHTS = 2; // Zakładając, że tyle obsługujesz w shaderze sceny
 
-    // === Zależności ===
     private final Window window;
 
-    // === Komponenty renderujące ===
     private ShaderManager shaderManager;
-    private ShadowRenderer shadowRenderer;
+    private ShadowRenderer shadowRenderer; // Dla cieni kierunkowych
     private SceneRenderer sceneRenderer;
     private DefaultResourceManager defaultResourceManager;
+    private SpotLightShadowRenderer spotLightShadowRenderer; // Dla cieni reflektorowych (jeśli używasz)
 
     private boolean initialized = false;
 
     public Renderer(Window window) {
         if (window == null) throw new IllegalArgumentException("Window cannot be null for Renderer");
         this.window = window;
-        // Inicjalizacja komponentów na null
         this.shaderManager = null;
         this.shadowRenderer = null;
         this.sceneRenderer = null;
         this.defaultResourceManager = null;
+        this.spotLightShadowRenderer = null; // Inicjalizacja
         this.initialized = false;
     }
-
-    // --- Inicjalizacja ---
 
     public void init() throws ResourceLoadException, ResourceNotFoundException {
         if (initialized) {
@@ -58,36 +50,40 @@ public class Renderer {
         long startTime = System.nanoTime();
 
         try {
-            // Utwórz instancje komponentów
             shaderManager = new ShaderManager();
-            shadowRenderer = new ShadowRenderer(window); // Przekaż zależność Window
-            sceneRenderer = new SceneRenderer(window);   // Przekaż zależność Window
+            shadowRenderer = new ShadowRenderer(window);
+            sceneRenderer = new SceneRenderer(window);
             defaultResourceManager = new DefaultResourceManager();
+            spotLightShadowRenderer = new SpotLightShadowRenderer(window); // Utwórz instancję
 
-            // Zainicjalizuj komponenty w odpowiedniej kolejności
-            defaultResourceManager.init(); // Domyślne zasoby najpierw
-            shaderManager.init();          // Potem shadery
-            shadowRenderer.init();         // Potem mapa cieni
+            defaultResourceManager.init();
+            shaderManager.init(); // Shadery muszą być pierwsze, jeśli inne komponenty z nich korzystają
+            shadowRenderer.init();
+            spotLightShadowRenderer.init(); // Inicjalizuj renderer cieni reflektorowych
 
-            // Ustaw zależności dla SceneRenderer po inicjalizacji pozostałych
+            // Przekaż zależności do SceneRenderer
+            // Upewnij się, że przekazujesz poprawne ID tekstur cieni, jeśli używasz obu typów
             sceneRenderer.setupDependencies(
                     shaderManager.getSceneShaderProgram(),
                     defaultResourceManager.getDefaultTexture(),
                     defaultResourceManager.getDefaultMaterial(),
                     shadowRenderer.getShadowMapTextureId()
+                    // Jeśli shader sceny obsługuje też cienie reflektorowe, potrzebujesz sposobu
+                    // na przekazanie ID tekstury cube mapy z spotLightShadowRenderer
+                    // np. dodając kolejny argument do setupDependencies lub osobną metodę.
+                    // Na razie zakładam, że shader sceny używa tylko cieni kierunkowych.
             );
 
-            // Ustaw ogólny stan OpenGL
             setupOpenGLState();
-
-            initialized = true; // Sukces
+            initialized = true;
 
         } catch (ResourceLoadException | ResourceNotFoundException e) {
             System.err.println("Renderer: Initialization failed!");
-            cleanupPartialInit(); throw e;
-        } catch (Exception e) { // Złap inne nieoczekiwane wyjątki
+            cleanupPartialInit();
+            throw e;
+        } catch (Exception e) {
             System.err.println("Renderer: Unexpected error during initialization!");
-            e.printStackTrace(); // Wypisz stack trace dla nieoczekiwanych błędów
+            e.printStackTrace();
             cleanupPartialInit();
             throw new ResourceLoadException("Unexpected error during Renderer initialization", e);
         }
@@ -101,12 +97,11 @@ public class Renderer {
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
-        glClearColor(0.1f, 0.1f, 0.15f, 1.0f); // Kolor tła
+        // Kolor tła ustawiany tutaj jest domyślnym kolorem czyszczenia.
+        // SceneRenderer wywołuje glClear z tym kolorem.
+        glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
         System.out.println("  Renderer: Global OpenGL state set.");
-        // Uwaga: Viewport jest zarządzany przez ShadowRenderer i SceneRenderer
     }
-
-    // --- Główna Metoda Renderująca ---
 
     public void render(Camera camera, List<GameObject> gameObjects,
                        DirectionalLight dirLight, List<PointLight> pointLights, List<SpotLight> spotLights) {
@@ -116,43 +111,81 @@ public class Renderer {
             return;
         }
 
-        // 1. Przebieg Cieni (Depth Pass) - delegacja do ShadowRenderer
-        shadowRenderer.render(gameObjects, dirLight, shaderManager.getDepthShaderProgram());
+        // 1. Przebieg Cieni Kierunkowych (jeśli jest światło kierunkowe)
+        if (dirLight != null && shadowRenderer != null && shaderManager.getDepthShaderProgram() != null) {
+            shadowRenderer.render(gameObjects, dirLight, shaderManager.getDepthShaderProgram());
+        }
 
-        // 2. Przebieg Sceny (Scene Pass) - delegacja do SceneRenderer
-        sceneRenderer.render(camera, gameObjects, dirLight, pointLights, spotLights);
+        // 2. Przebieg Cieni Reflektorowych (dla każdego reflektora rzucającego cień)
+        //    To jest uproszczenie; w praktyce chciałbyś iterować po spotLights i renderować mapę cieni
+        //    dla tych, które mają włączone cienie. Shader sceny musiałby potem używać odpowiedniej mapy.
+        //    Na razie zakładamy, że jest jeden główny spotLight rzucający cień, jeśli w ogóle.
+        //    Jeśli DemoGame ma tylko jeden flashlight (spotLight.get(0)), to:
+        if (spotLights != null && !spotLights.isEmpty() && spotLightShadowRenderer != null && shaderManager.getSpotLightDepthShaderProgram() != null) {
+            // Załóżmy, że chcemy cienie tylko od pierwszego reflektora dla uproszczenia
+            SpotLight shadowCastingSpotLight = spotLights.get(0);
+            if (shadowCastingSpotLight != null) { // Upewnij się, że istnieje
+                // Potrzebujesz shadera głębi dla cube mapy (może być inny niż dla 2D mapy cieni)
+                spotLightShadowRenderer.render(gameObjects, shadowCastingSpotLight, shaderManager.getSpotLightDepthShaderProgram());
+                // SceneRenderer musiałby wiedzieć, jak użyć tej mapy cieni (spotLightShadowRenderer.getDepthCubeMapTextureId())
+            }
+        }
 
-        // Sprawdzenie błędów OpenGL na koniec klatki (opcjonalne, może wpływać na wydajność)
-        // checkGLErrors("EndOfFrame");
+
+        // 3. Główny Przebieg Sceny
+        //    SceneRenderer jest odpowiedzialny za glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        //    przed rysowaniem sceny.
+        if (sceneRenderer != null) {
+            // Jeśli shader sceny używa cieni reflektorowych, musisz przekazać ID tekstury cube mapy
+            // do SceneRenderer (np. przez nową metodę lub rozszerzenie setupDependencies)
+            // i SceneRenderer musi ją zbindować i użyć w shaderze.
+            // np. sceneRenderer.setSpotLightShadowMapTexture(spotLightShadowRenderer.getDepthCubeMapTextureId());
+            sceneRenderer.render(camera, gameObjects, dirLight, pointLights, spotLights);
+        }
+
+        checkGLErrors("EndOfFrame_Renderer");
     }
 
-    // Opcjonalna metoda do sprawdzania błędów GL
     private void checkGLErrors(String context) {
         int error;
-        while ((error = glGetError()) != GL_NO_ERROR) {
-            System.err.println("OpenGL Error (" + context + "): " + error);
-            // Można tu dodać mapowanie kodu błędu na string, jeśli potrzeba
+        while ((error = GL11.glGetError()) != GL_NO_ERROR) {
+            System.err.println("OpenGL Error (" + context + "): " + error + " - " + getGLErrorString(error));
         }
     }
 
-    // --- Sprzątanie ---
+    // Prosta metoda pomocnicza do konwersji kodów błędów GL na stringi
+    private String getGLErrorString(int error) {
+        switch (error) {
+            case GL_INVALID_ENUM: return "GL_INVALID_ENUM";
+            case GL_INVALID_VALUE: return "GL_INVALID_VALUE";
+            case GL_INVALID_OPERATION: return "GL_INVALID_OPERATION";
+            case GL_STACK_OVERFLOW: return "GL_STACK_OVERFLOW";
+            case GL_STACK_UNDERFLOW: return "GL_STACK_UNDERFLOW";
+            case GL_OUT_OF_MEMORY: return "GL_OUT_OF_MEMORY";
+            case GL_INVALID_FRAMEBUFFER_OPERATION: return "GL_INVALID_FRAMEBUFFER_OPERATION";
+            default: return "Unknown GL error";
+        }
+    }
 
     public void cleanup() {
-        if (!initialized && shaderManager == null && shadowRenderer == null && sceneRenderer == null && defaultResourceManager == null) {
+        if (!initialized && shaderManager == null && shadowRenderer == null && sceneRenderer == null && defaultResourceManager == null && spotLightShadowRenderer == null) {
             System.out.println("Renderer: Cleanup skipped (already clean or never initialized).");
             return;
         }
         System.out.println("Renderer: Cleaning up...");
         long startTime = System.nanoTime();
 
-        // Sprzątaj komponenty w odwrotnej kolejności inicjalizacji (lub logicznej)
-        if (sceneRenderer != null) { // SceneRenderer nie ma zasobów GPU, ale można wywołać dla spójności
-            sceneRenderer.cleanup();
+        if (sceneRenderer != null) {
+            sceneRenderer.cleanup(); // Głównie zeruje referencje
             sceneRenderer = null;
         }
         if (shadowRenderer != null) {
             shadowRenderer.cleanup();
             shadowRenderer = null;
+        }
+        if (spotLightShadowRenderer != null) { // Sprzątanie renderera cieni reflektorowych
+            spotLightShadowRenderer.cleanup();
+            spotLightShadowRenderer = null;
         }
         if (shaderManager != null) {
             shaderManager.cleanup();
@@ -163,7 +196,7 @@ public class Renderer {
             defaultResourceManager = null;
         }
 
-        initialized = false; // Zresetuj flagę
+        initialized = false;
 
         long endTime = System.nanoTime();
         System.out.println("Renderer: Cleanup complete (" + (endTime - startTime) / 1_000_000 + " ms).");
@@ -171,20 +204,21 @@ public class Renderer {
 
     private void cleanupPartialInit() {
         System.out.println("Renderer: Cleaning up partially initialized resources due to error...");
-        // Wywołaj główną metodę cleanup, która sprawdzi nulle i posprząta co się da
-        cleanup();
+        cleanup(); // Wywołaj główną metodę cleanup
         System.out.println("Renderer: Partial cleanup finished.");
     }
 
-    // --- Stan ---
-
     public boolean isReady() {
-        // Renderer jest gotowy, jeśli został pomyślnie zainicjalizowany
-        // i wszystkie jego kluczowe komponenty są gotowe (wewnętrznie sprawdzane przez ich gettery lub isReady)
         return initialized &&
                 shaderManager != null && shaderManager.areShadersReady() &&
-                shadowRenderer != null && shadowRenderer.getShadowMap() != null && // Proste sprawdzenie
-                sceneRenderer != null && // SceneRenderer nie ma złożonego stanu "ready" poza ustawionymi zależnościami
-                defaultResourceManager != null; // DefaultResourceManager nie ma złożonego stanu
+                shadowRenderer != null && shadowRenderer.getShadowMap() != null &&
+                spotLightShadowRenderer != null && // Sprawdzenie gotowości
+                sceneRenderer != null &&
+                defaultResourceManager != null;
+    }
+
+    // Opcjonalny getter, jeśli potrzebny
+    public ShaderManager getShaderManager() {
+        return shaderManager;
     }
 }

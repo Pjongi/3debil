@@ -14,10 +14,10 @@ import org.example.graphics.light.Attenuation;
 import org.example.graphics.light.DirectionalLight;
 import org.example.graphics.light.PointLight;
 import org.example.graphics.light.SpotLight;
-// Poprawny import dla nowego Renderer'a
 import org.example.graphics.render.Renderer;
 import org.example.scene.GameObject;
 import org.example.scene.GameObjectProperties;
+import org.example.ui.NuklearGui; // Upewnij się, że ten import jest
 import org.example.util.MeshLoader;
 import org.example.util.ModelLoader;
 import org.joml.Vector2f;
@@ -41,7 +41,10 @@ public class DemoGame implements IEngineLogic {
     private DirectionalLight directionalLight;
     private List<PointLight> pointLights;
     private List<SpotLight> spotLights;
+
     private AudioManager audioManager;
+    private NuklearGui nuklearGui; // Referencja do NuklearGui
+
     private SoundSource backgroundMusicSource;
     private SoundSource stepSoundSource;
     private int stepSoundBuffer = -1;
@@ -60,14 +63,15 @@ public class DemoGame implements IEngineLogic {
     private final float interactionMaxDistance = 10.0f;
 
     @Override
-    public void init(Window window, Renderer renderer, AudioManager audioManager) throws Exception { // Typ Renderer jest teraz poprawny
+    public void init(Window window, Renderer renderer, AudioManager audioManager, NuklearGui nuklearGui) throws Exception {
         this.audioManager = audioManager;
-        gameObjects = new ArrayList<>();
-        meshes = new HashMap<>();
-        textures = new HashMap<>();
-        materials = new HashMap<>();
-        pointLights = new ArrayList<>();
-        spotLights = new ArrayList<>();
+        this.nuklearGui = nuklearGui; // Zapisz referencję
+        this.gameObjects = new ArrayList<>();
+        this.meshes = new HashMap<>();
+        this.textures = new HashMap<>();
+        this.materials = new HashMap<>();
+        this.pointLights = new ArrayList<>();
+        this.spotLights = new ArrayList<>();
 
         System.out.println("DemoGame: Initializing resources...");
         long startTime = System.nanoTime();
@@ -176,6 +180,10 @@ public class DemoGame implements IEngineLogic {
 
     private void loadSoundsSafe() {
         System.out.println("  DemoGame: Loading sounds...");
+        if (audioManager == null) {
+            System.err.println("    ERROR: AudioManager is null in loadSoundsSafe.");
+            return;
+        }
         try {
             int musicBuf = audioManager.loadSound("audio/music.wav");
             backgroundMusicSource = audioManager.createSource(true, true);
@@ -313,17 +321,27 @@ public class DemoGame implements IEngineLogic {
 
             if (targetedObject != null) {
                 System.out.println("Player is looking at: " + targetedObject.getProperties().getTypeName() + " at distance: " + String.format("%.2f", closestDistance));
+
                 if (targetedObject.getProperties().isDestructible() && targetedObject.getProperties().isAlive()) {
                     System.out.println("Attacking " + targetedObject.getProperties().getTypeName() + "!");
-                    if (targetedObject.takeDamage(25)) {
+                    if (targetedObject.takeDamage(25)) { // takeDamage wywołuje triggerHitEffect w GameObjectProperties
                         System.out.println("  " + targetedObject.getProperties().getTypeName() + " DESTROYED!");
                     }
                     System.out.println("  " + targetedObject.getProperties().getTypeName() + " HP: " + targetedObject.getProperties().getCurrentHitPoints() + "/" + targetedObject.getProperties().getMaxHitPoints());
                 } else if (!targetedObject.getProperties().isDestructible()){
                     System.out.println("  " + targetedObject.getProperties().getTypeName() + " is not destructible.");
+                    // Nawet jeśli niezniszczalny, ale targetowalny, pokażmy Hit Marker
+                    targetedObject.getProperties().triggerHitEffect();
                 } else if (!targetedObject.getProperties().isAlive()){
                     System.out.println("  " + targetedObject.getProperties().getTypeName() + " is already destroyed.");
                 }
+
+                // Trigger Hit Marker GUI
+                if (this.nuklearGui != null) {
+                    System.out.println("DEMOGAME: Triggering Hit Marker via NuklearGUI!"); // LOG
+                    this.nuklearGui.triggerHitMarker();
+                }
+
             } else {
                 System.out.println("Player is looking at nothing interactable in range (" + interactionMaxDistance + " units).");
             }
@@ -377,11 +395,12 @@ public class DemoGame implements IEngineLogic {
 
     @Override
     public void update(float deltaTime) {
-        Mesh cubeMesh = meshes.get("cube");
-        if (cubeMesh == null) return;
-
         for (GameObject go : gameObjects) {
-            if (go.getMesh() == cubeMesh && go.isVisible() && go.getProperties().isAlive()) {
+            // Aktualizacja efektu trafienia (jeśli zaimplementowano wizualny efekt na obiekcie)
+            go.getProperties().updateHitEffect(deltaTime);
+
+            // Logika rotacji sześcianów
+            if (go.getMesh() == meshes.get("cube") && go.isVisible() && go.getProperties().isAlive()) {
                 Vector3f pos = go.getPosition();
                 if (Math.abs(pos.x - (-2.5f)) < 0.1f && Math.abs(pos.z - (-2.5f)) < 0.1f) {
                     go.rotate(deltaTime * 0.3f, 0, 1, 0);
@@ -395,11 +414,13 @@ public class DemoGame implements IEngineLogic {
     }
 
     @Override
-    public void render(Window window, Camera camera, Renderer renderer) { // Typ Renderer jest teraz poprawny
+    public void render(Window window, Camera camera, Renderer renderer) {
         if (renderer != null && renderer.isReady() && camera != null) {
             List<GameObject> visibleObjects = new ArrayList<>();
             for (GameObject go : gameObjects) {
                 if (go.isVisible()) {
+                    // Tutaj można by dodać logikę zmiany materiału/uniformów dla efektu trafienia
+                    // jeśli GameObjectProperties.isHitEffectActive() jest true
                     visibleObjects.add(go);
                 }
             }

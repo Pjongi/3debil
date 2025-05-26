@@ -1,9 +1,11 @@
 package org.example.scene;
 
+import org.joml.Vector3f; // Potrzebne dla originalMaterialColor, jeśli zdecydujesz się go używać
+
 public class GameObjectProperties {
 
     private final String typeName;
-    private final String material;
+    private final String material; // Nazwa materiału, nie sam obiekt Material
     private final boolean hasPhysics;
     private final boolean isStatic;
     private final boolean isCollectable;
@@ -14,6 +16,14 @@ public class GameObjectProperties {
     private int currentHitPoints;
     private final float mass;
     private final float friction;
+
+    // Pola dla efektu trafienia (np. błysk koloru)
+    private transient boolean hitEffectActive = false; // Użyj 'transient', jeśli nie chcesz tego serializować
+    private transient float hitEffectTimer = 0.0f;
+    public static final float HIT_EFFECT_DURATION = 0.15f; // Czas trwania efektu w sekundach
+    // Opcjonalnie, do przechowywania oryginalnego koloru materiału, jeśli go zmieniasz
+    private transient Vector3f originalMaterialDiffuseColor = null;
+
 
     private GameObjectProperties(Builder builder) {
         this.typeName = builder.typeName;
@@ -32,14 +42,11 @@ public class GameObjectProperties {
         if (this.isDestructible && this.maxHitPoints <= 0) {
             throw new IllegalArgumentException("Destructible object ('" + typeName + "') must have positive maxHitPoints.");
         }
-        // Ostrzeżenie o fizyce dla obiektów statycznych jest mniej krytyczne, można je zakomentować
-        // if (this.isStatic && this.hasPhysics) {
-        //     System.out.println("Warning: Static object ('" + typeName + "') has physics enabled. Consider disabling for static objects unless static collision detection is intended.");
-        // }
     }
 
+    // --- Gettery dla podstawowych właściwości ---
     public String getTypeName() { return typeName; }
-    public String getMaterial() { return material; }
+    public String getMaterial() { return material; } // Zwraca nazwę materiału
     public boolean hasPhysics() { return hasPhysics; }
     public boolean isStatic() { return isStatic; }
     public boolean isCollectable() { return isCollectable; }
@@ -52,36 +59,28 @@ public class GameObjectProperties {
     public float getFriction() { return friction; }
 
     public void setVisible(boolean visible) {
-        // Jeśli obiekt jest zniszczony (nie żyje) i próbujemy go uczynić widocznym,
-        // nie pozwalamy na to, chyba że logika gry zaimplementuje "respawn",
-        // który resetuje HP i inne stany.
         if (!isAlive() && visible) {
-            // System.out.println("Cannot make destroyed object '" + typeName + "' visible again without respawn logic.");
-            // W tym przypadku, jeśli jest zniszczony, pozostaje niewidoczny.
             this.isVisible = false;
             return;
         }
         this.isVisible = visible;
     }
 
-    /**
-     * Zadaje obrażenia obiektowi.
-     * @param amount Ilość obrażeń.
-     * @return true, jeśli obiekt został zniszczony (HP spadło do 0 lub poniżej) w wyniku tego ataku.
-     */
     public boolean takeDamage(int amount) {
         if (isDestructible && isAlive() && amount > 0) {
             this.currentHitPoints -= amount;
+            // Aktywuj efekt trafienia, nawet jeśli obiekt nie został zniszczony
+            triggerHitEffect(); // <<--- DODANO AKTYWACJĘ EFEKTU
+
             if (this.currentHitPoints <= 0) {
                 this.currentHitPoints = 0;
-                this.isVisible = false; // Zniszczony obiekt staje się niewidoczny
-                this.canBeTargeted = false; // Nie można już go targetować
-                // System.out.println("Object '" + typeName + "' destroyed! Became invisible and untargetable.");
-                return true; // Zwraca true, bo został zniszczony
+                this.isVisible = false;
+                this.canBeTargeted = false;
+                return true;
             }
-            return false; // Otrzymał obrażenia, ale jeszcze nie zniszczony
+            return false;
         }
-        return false; // Niezniszczalny, już zniszczony, lub negatywne obrażenia
+        return false;
     }
 
     public void setCurrentHitPoints(int amount) {
@@ -90,16 +89,6 @@ public class GameObjectProperties {
             if (!isAlive()) {
                 this.isVisible = false;
                 this.canBeTargeted = false;
-            } else {
-                // Jeśli obiekt był niewidoczny z powodu bycia zniszczonym, a teraz HP > 0,
-                // potencjalnie powinien stać się znowu widoczny i targetowalny.
-                // To zależy od logiki "respawnu" gry. Na razie setVisible() obsłuży to.
-                // Jeśli this.isVisible było false, trzeba by je ręcznie ustawić na true, jeśli chcemy
-                // aby "wyleczony" obiekt od razu się pojawił.
-                // if (this.currentHitPoints > 0 && !this.isVisible) {
-                //    this.isVisible = true;
-                //    this.canBeTargeted = true;
-                // }
             }
         }
     }
@@ -108,6 +97,71 @@ public class GameObjectProperties {
         return !isDestructible || currentHitPoints > 0;
     }
 
+    // --- Metody dla efektu trafienia ---
+
+    /**
+     * Aktywuje wizualny efekt trafienia na obiekcie.
+     */
+    public void triggerHitEffect() {
+        // Aktywuj tylko jeśli obiekt jest nadal widoczny i targetowalny
+        // (lub dostosuj logikę, jeśli chcesz efekt nawet na zniszczonym obiekcie przez moment)
+        if (this.isVisible && this.canBeTargeted) { // Lub po prostu if (isAlive())
+            this.hitEffectActive = true;
+            this.hitEffectTimer = HIT_EFFECT_DURATION;
+            // Zapis oryginalnego koloru materiału powinien być obsłużony przez logikę renderowania/aktualizacji,
+            // która ma dostęp do faktycznego obiektu Material.
+            // Tutaj tylko ustawiamy flagi.
+            this.originalMaterialDiffuseColor = null; // Zresetuj, aby renderer mógł zapisać nowy
+        }
+    }
+
+    /**
+     * Sprawdza, czy efekt trafienia jest aktualnie aktywny.
+     * @return true, jeśli efekt jest aktywny.
+     */
+    public boolean isHitEffectActive() {
+        return hitEffectActive;
+    }
+
+    /**
+     * Aktualizuje timer efektu trafienia. Powinno być wywoływane co klatkę.
+     * @param deltaTime Czas od ostatniej klatki.
+     */
+    public void updateHitEffect(float deltaTime) {
+        if (hitEffectActive) {
+            hitEffectTimer -= deltaTime;
+            if (hitEffectTimer <= 0) {
+                hitEffectActive = false;
+                // Logika przywrócenia oryginalnego wyglądu (np. koloru)
+                // powinna być obsłużona przez Renderer lub GameObject,
+                // gdy wykryje, że hitEffectActive stało się false.
+                // Tutaj tylko resetujemy flagę.
+            }
+        }
+    }
+
+    /**
+     * Zwraca zapisany oryginalny kolor diffuse materiału. Używane do przywrócenia koloru po efekcie.
+     * @return Wektor koloru lub null, jeśli nie zapisano.
+     */
+    public Vector3f getOriginalMaterialDiffuseColor() {
+        return originalMaterialDiffuseColor;
+    }
+
+    /**
+     * Ustawia (zapisuje) oryginalny kolor diffuse materiału.
+     * @param color Kolor do zapisania.
+     */
+    public void setOriginalMaterialDiffuseColor(Vector3f color) {
+        if (color != null) {
+            this.originalMaterialDiffuseColor = new Vector3f(color);
+        } else {
+            this.originalMaterialDiffuseColor = null;
+        }
+    }
+
+
+    // --- Klasa Builder (bez zmian w stosunku do twojego kodu) ---
     public static class Builder {
         private String typeName = "GenericObject";
         private String material = "Default";
@@ -115,7 +169,7 @@ public class GameObjectProperties {
         private boolean isStatic = false;
         private boolean isCollectable = false;
         private boolean isVisible = true;
-        private boolean canBeTargeted = true; // Domyślnie można targetować
+        private boolean canBeTargeted = true;
         private boolean isDestructible = false;
         private int maxHitPoints = 0;
         private int currentHitPoints = 0;
@@ -136,9 +190,9 @@ public class GameObjectProperties {
         }
         public Builder setStatic(boolean isStatic) {
             this.isStatic = isStatic;
-            if (isStatic && this.hasPhysics) { // Jeśli ustawiamy na statyczny i fizyka jest włączona,
-                System.out.println("Warning: Setting object '" + typeName + "' as static. Disabling physics as well for consistency, unless explicitly re-enabled.");
-                this.hasPhysics = false; // często statyczne obiekty nie potrzebują dynamicznej fizyki.
+            if (isStatic && this.hasPhysics) {
+                // System.out.println("Warning: Setting object '" + typeName + "' as static. Disabling physics as well for consistency, unless explicitly re-enabled.");
+                this.hasPhysics = false;
             }
             return this;
         }
@@ -156,7 +210,7 @@ public class GameObjectProperties {
         }
         public Builder makeDestructible(int maxHp) {
             if (maxHp <= 0) {
-                System.err.println("Warning: Attempted to make object '" + typeName + "' destructible with non-positive maxHp (" + maxHp + "). Setting as non-destructible.");
+                // System.err.println("Warning: Attempted to make object '" + typeName + "' destructible with non-positive maxHp (" + maxHp + "). Setting as non-destructible.");
                 this.isDestructible = false; this.maxHitPoints = 0; this.currentHitPoints = 0;
             } else {
                 this.isDestructible = true; this.maxHitPoints = maxHp; this.currentHitPoints = maxHp;
