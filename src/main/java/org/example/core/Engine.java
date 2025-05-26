@@ -12,6 +12,11 @@ import org.lwjgl.nuklear.NkRect;
 import org.lwjgl.nuklear.Nuklear;
 import org.lwjgl.system.MemoryStack;
 
+// Potrzebne importy dla glfwGetKey
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
+import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
+import static org.lwjgl.glfw.GLFW.glfwGetKey;
+
 public class Engine {
 
     private Window window = null;
@@ -27,7 +32,7 @@ public class Engine {
 
     private boolean initializedSuccessfully = false;
     private boolean isPaused = false;
-    private boolean escKeyPressed = false;
+    private boolean escKeyPressed = false; // Służy do wykrywania zbocza narastającego naciśnięcia ESC
 
     public Engine(String windowTitle, int width, int height, IEngineLogic gameLogic) {
         this.windowTitle = windowTitle;
@@ -96,6 +101,8 @@ public class Engine {
             // System.out.println("Engine.setPaused: No change in pause state (" + paused + ")");
             return;
         }
+        System.out.println("Engine.setPaused(" + paused + ") called. Previous isPaused=" + this.isPaused); // LOG
+
         this.isPaused = paused;
         if (window == null || input == null || nuklearGui == null) {
             System.err.println("Engine.setPaused: Critical component is null.");
@@ -107,14 +114,22 @@ public class Engine {
             input.clearCallbacks();
             nuklearGui.setActiveCallbacks();
             GLFW.glfwSetInputMode(window.getWindowHandle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+
+            // Sugestia: Zakomentuj poniższy blok `if (nuklearGui.getContext() != null)`
+            // jeśli samo `nk_begin` w `buildPauseMenuAndHandleActions` jest wystarczające do pokazania okna.
+            // To może pomóc uniknąć konfliktów w zarządzaniu widocznością okna Nuklear.
+            /*
             if (nuklearGui.getContext() != null) {
+                System.out.println("Engine.setPaused: Calling nk_window_show for 'Pause Menu' to NK_SHOWN."); // LOG
                 Nuklear.nk_window_show(nuklearGui.getContext(), "Pause Menu", Nuklear.NK_SHOWN);
             }
+            */
+
         } else {
             System.out.println("Engine: Game Resumed - Activating Game Input. Cursor set to DISABLED.");
             nuklearGui.clearCallbacks();
             input.setActiveCallbacks();
-            input.resetMouseDelta();
+            input.resetMouseDelta(); // Ważne, aby zresetować deltę myszy po wyjściu z GUI
         }
     }
 
@@ -138,13 +153,19 @@ public class Engine {
             }
 
             // 4. Logika globalna (ESC do pauzy)
-            boolean escCurrentlyPressed = Input.isKeyDown(GLFW.GLFW_KEY_ESCAPE);
-            if (escCurrentlyPressed && !escKeyPressed) {
-                // System.out.println("Engine.loop: ESC pressed, current isPaused: " + isPaused + ", attempting to toggle to: " + !isPaused);
-                setPaused(!isPaused);
+            // Użyj glfwGetKey dla niezawodnego odczytu stanu fizycznego klawisza
+            // System.out.println("Engine.loop() - Top: isPaused=" + isPaused + ", escKeyPressedBeforeCheck=" + escKeyPressed); // LOG
 
+            boolean escCurrentlyPressed = (window != null && glfwGetKey(window.getWindowHandle(), GLFW_KEY_ESCAPE) == GLFW_PRESS);
+            // System.out.println("Engine.loop() - escCurrentlyPressed=" + escCurrentlyPressed); // LOG
+
+            if (escCurrentlyPressed && !escKeyPressed) {
+                // System.out.println("Engine.loop() - ESC TOGGLE! Current isPaused=" + isPaused + ", new isPaused=" + !isPaused); // LOG
+                setPaused(!isPaused);
             }
-            escKeyPressed = escCurrentlyPressed;
+            escKeyPressed = escCurrentlyPressed; // Aktualizuj stan poprzedniego wciśnięcia
+            // System.out.println("Engine.loop() - Bottom: isPaused=" + isPaused + ", escKeyPressedAfterUpdate=" + escKeyPressed); // LOG
+
 
             // 5. Aktualizacja słuchacza audio
             if (audioManager != null && audioManager.getListener() != null && camera != null) {
@@ -158,7 +179,7 @@ public class Engine {
                     gameLogic.input(window, input, camera, deltaTime);
                     gameLogic.update(deltaTime);
                 }
-                if (input != null) input.update();
+                if (input != null) input.update(); // Input.update() głównie oblicza mouseDelta
             }
             // else: Jeśli jest pauza, logika menu jest już obsłużona w kroku 3
 
@@ -185,9 +206,15 @@ public class Engine {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             NkRect rect = NkRect.malloc(stack);
             float menuWidth = 220;
-            float menuHeight = 100;
+            float menuHeight = 100; // Zwiększono, aby zmieścić przyciski
             float x = (window.getWidth() - menuWidth) / 2;
             float y = (window.getHeight() - menuHeight) / 2;
+
+            // Upewnij się, że okno Nuklear jest "otwarte" jeśli gra jest spauzowana
+            // Jeśli używasz NK_WINDOW_CLOSABLE, to zamknięcie okna przez X ustawi jego stan na NK_HIDDEN.
+            // Tutaj możemy chcieć je pokazać ponownie, jeśli gra jest w stanie pauzy.
+            // Alternatywnie, można by nie używać NK_WINDOW_CLOSABLE i polegać tylko na przyciskach.
+            // nk_window_show(ctx, menuTitle, Nuklear.NK_SHOWN); // Opcjonalne, jeśli zarządzasz widocznością inaczej
 
             if (Nuklear.nk_begin(ctx, menuTitle, Nuklear.nk_rect(x, y, menuWidth, menuHeight, rect),
                     Nuklear.NK_WINDOW_BORDER | Nuklear.NK_WINDOW_MOVABLE | Nuklear.NK_WINDOW_TITLE | Nuklear.NK_WINDOW_NO_SCROLLBAR | Nuklear.NK_WINDOW_CLOSABLE )) {
@@ -195,18 +222,23 @@ public class Engine {
                 Nuklear.nk_layout_row_dynamic(ctx, 30, 1);
                 if (Nuklear.nk_button_label(ctx, "Resume Game")) {
                     System.out.println("Engine: 'Resume Game' button LOGIC TRIGGERED!");
-                    setPaused(false);
+                    setPaused(false); // Wznowienie gry
                 }
 
                 Nuklear.nk_layout_row_dynamic(ctx, 30, 1);
                 if (Nuklear.nk_button_label(ctx, "Exit to Desktop")) {
                     System.out.println("Engine: 'Exit to Desktop' button LOGIC TRIGGERED!");
-                    GLFW.glfwSetWindowShouldClose(window.getWindowHandle(), true);
+                    if (window != null) {
+                        GLFW.glfwSetWindowShouldClose(window.getWindowHandle(), true);
+                    }
                 }
             } else {
-                // System.out.println("Engine.buildPauseMenu: nk_begin for '" + menuTitle + "' returned false. Current isPaused: " + isPaused);
-                if (isPaused) {
-                    // System.out.println("Engine.buildPauseMenu: Resuming game because Nuklear window was closed (nk_begin returned false).");
+                // nk_begin zwróciło false, co oznacza, że okno Nuklear jest "zamknięte"
+                // (np. przez kliknięcie 'X' jeśli NK_WINDOW_CLOSABLE jest ustawione).
+                // W takiej sytuacji chcemy wznowić grę.
+                // System.out.println("Engine.buildPauseMenu: nk_begin for '" + menuTitle + "' returned false. Current isPaused: " + isPaused); // LOG
+                if (isPaused) { // Dodatkowe sprawdzenie, czy faktycznie byliśmy w pauzie
+                    // System.out.println("Engine.buildPauseMenu: Resuming game because Nuklear window was closed (nk_begin returned false)."); // LOG
                     setPaused(false);
                 }
             }
